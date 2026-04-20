@@ -19,6 +19,8 @@ from analysis import (
     analyze_portfolio_holdings,
     search_ticker,
     get_chat_context,
+    get_market_regime,
+    get_ai_analysis_context,
 )
 import socket
 import traceback
@@ -412,17 +414,36 @@ def api_search():
 
 @app.route("/api/chat-context", methods=["POST"])
 def api_chat_context():
-    """Build context for the AI chatbot based on user's portfolio."""
+    """Build enhanced context for the AI chatbot with market regime and trade patterns."""
     try:
         body = request.get_json(force=True)
         holdings = body.get("holdings", [])
         trade_history = body.get("trade_history", [])
 
-        context = get_chat_context(
+        # Use enhanced AI context (includes market regime + trade patterns)
+        ai_context = get_ai_analysis_context(
             holdings=holdings[:20],
             trade_history=trade_history[:50],
         )
-        return safe_jsonify({"status": "ok", "context": context})
+        # Also get the role/instructions
+        chat_context = get_chat_context(
+            holdings=holdings[:20],
+            trade_history=trade_history[:50],
+        )
+        # Combine: AI analysis data + role instructions
+        full_context = ai_context + "\n\n" + chat_context
+        return safe_jsonify({"status": "ok", "context": full_context})
+    except Exception as e:
+        traceback.print_exc()
+        return safe_jsonify({"status": "error", "message": str(e)}, 500)
+
+
+@app.route("/api/market-regime")
+def api_market_regime():
+    """Get current market regime (bull/bear/sideways/correction)."""
+    try:
+        data = _get_cached("market_regime", get_market_regime)
+        return safe_jsonify({"status": "ok", "data": data})
     except Exception as e:
         traceback.print_exc()
         return safe_jsonify({"status": "error", "message": str(e)}, 500)

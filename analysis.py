@@ -1852,6 +1852,135 @@ def search_ticker(ticker_str):
 # Chat Context — build context for AI chatbot
 # ---------------------------------------------------------------------------
 
+def get_market_regime():
+    """
+    Detect current market regime: bull, bear, or sideways.
+    Uses S&P 500 as the primary indicator.
+    Returns regime info for adjusting recommendations.
+    """
+    df = _safe_download("^GSPC", period="6mo", interval="1d")
+    if df is None or len(df) < 50:
+        return {"regime": "unknown", "description": "Could not determine market regime"}
+
+    close = df["Close"].squeeze()
+    current = float(close.iloc[-1])
+
+    sma_50 = float(close.rolling(50).mean().iloc[-1])
+    sma_200 = float(close.rolling(200).mean().iloc[-1]) if len(close) >= 200 else None
+
+    pct_1m = float((close.iloc[-1] / close.iloc[-21] - 1) * 100) if len(close) >= 21 else 0
+    pct_3m = float((close.iloc[-1] / close.iloc[-63] - 1) * 100) if len(close) >= 63 else 0
+
+    # Determine regime
+    if sma_200 and current > sma_200 and current > sma_50 and pct_3m > 5:
+        regime = "bull"
+        desc = "Strong bull market — stocks trending up, good time for growth picks"
+        strategy_hint = "Favor growth stocks, tech, and aggressive positions. Reduce bonds."
+    elif sma_200 and current < sma_200 and pct_3m < -5:
+        regime = "bear"
+        desc = "Bear market — stocks trending down, be defensive"
+        strategy_hint = "Favor bonds (BND), gold (GLD), dividends (SCHD). Avoid speculative stocks."
+    elif pct_1m < -3 and pct_3m < 0:
+        regime = "correction"
+        desc = "Market correction — pullback in progress"
+        strategy_hint = "Hold cash, look for oversold quality stocks to buy the dip."
+    else:
+        regime = "sideways"
+        desc = "Sideways/mixed market — no clear direction"
+        strategy_hint = "Be selective. Mix of value and growth. Keep some cash ready."
+
+    return {
+        "regime": regime,
+        "description": desc,
+        "strategy_hint": strategy_hint,
+        "sp500_price": round(current, 2),
+        "sp500_vs_sma50": round(((current - sma_50) / sma_50) * 100, 2),
+        "sp500_vs_sma200": round(((current - sma_200) / sma_200) * 100, 2) if sma_200 else None,
+        "sp500_1m": round(pct_1m, 2),
+        "sp500_3m": round(pct_3m, 2),
+    }
+
+
+def get_ai_analysis_context(holdings=None, trade_history=None):
+    """
+    Build enhanced context for AI analysis including market regime,
+    portfolio details, trade patterns, and specific analysis requests.
+    Used for AI-enhanced stock analysis and smarter recommendations.
+    """
+    context_parts = []
+
+    # Market regime
+    try:
+        regime = get_market_regime()
+        context_parts.append(f"=== CURRENT MARKET REGIME ===")
+        context_parts.append(f"Regime: {regime['regime'].upper()}")
+        context_parts.append(f"S&P 500: ${regime['sp500_price']} ({regime['sp500_1m']:+.1f}% 1M, {regime['sp500_3m']:+.1f}% 3M)")
+        context_parts.append(f"Assessment: {regime['description']}")
+        context_parts.append(f"Strategy: {regime['strategy_hint']}")
+    except Exception:
+        context_parts.append("=== MARKET REGIME: Unknown (data unavailable) ===")
+
+    # Portfolio details with P&L
+    if holdings and len(holdings) > 0:
+        context_parts.append(f"\n=== USER'S ACTIVE PORTFOLIO ===")
+        for h in holdings[:20]:
+            ticker = h.get("ticker", "?")
+            shares = h.get("shares", 0)
+            buy_price = h.get("buy_price", 0)
+            buy_date = h.get("buy_date", "?")
+            context_parts.append(f"- {ticker}: {shares} shares @ ${buy_price} (bought {buy_date})")
+
+    # Trade history patterns
+    if trade_history and len(trade_history) > 0:
+        wins = sum(1 for t in trade_history if float(t.get("sell_price", 0)) > float(t.get("buy_price", 0)))
+        total = len(trade_history)
+        win_rate = round((wins / total) * 100, 1) if total > 0 else 0
+
+        avg_hold_days = []
+        avg_win_pct = []
+        avg_loss_pct = []
+        for t in trade_history:
+            bp = float(t.get("buy_price", 0))
+            sp = float(t.get("sell_price", 0))
+            if bp > 0:
+                pct = ((sp - bp) / bp) * 100
+                if pct >= 0:
+                    avg_win_pct.append(pct)
+                else:
+                    avg_loss_pct.append(pct)
+            if t.get("buy_date") and t.get("sell_date"):
+                try:
+                    days = (datetime.strptime(t["sell_date"], "%Y-%m-%d") - datetime.strptime(t["buy_date"], "%Y-%m-%d")).days
+                    avg_hold_days.append(days)
+                except (ValueError, TypeError):
+                    pass
+
+        context_parts.append(f"\n=== TRADING PATTERNS ===")
+        context_parts.append(f"Total trades: {total}, Win rate: {win_rate}%")
+        if avg_win_pct:
+            context_parts.append(f"Avg winning trade: +{np.mean(avg_win_pct):.1f}%")
+        if avg_loss_pct:
+            context_parts.append(f"Avg losing trade: {np.mean(avg_loss_pct):.1f}%")
+        if avg_hold_days:
+            context_parts.append(f"Avg holding period: {np.mean(avg_hold_days):.0f} days")
+
+        # Pattern insights
+        if avg_win_pct and avg_loss_pct:
+            if np.mean(avg_win_pct) < abs(np.mean(avg_loss_pct)):
+                context_parts.append("⚠️ PATTERN: User's losses are bigger than wins — needs tighter stop-losses")
+            if avg_hold_days and np.mean(avg_hold_days) < 7:
+                context_parts.append("⚠️ PATTERN: User trades very frequently — may benefit from longer holds")
+
+        context_parts.append("Recent trades:")
+        for t in trade_history[-5:]:
+            bp = float(t.get("buy_price", 0))
+            sp = float(t.get("sell_price", 0))
+            pnl_pct = ((sp - bp) / bp * 100) if bp > 0 else 0
+            context_parts.append(f"  {t.get('ticker','?')}: ${bp:.2f} → ${sp:.2f} ({pnl_pct:+.1f}%)")
+
+    return "\n".join(context_parts)
+
+
 def get_chat_context(holdings=None, trade_history=None):
     """
     Build a context summary for the AI chatbot.
