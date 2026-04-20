@@ -422,9 +422,21 @@ async function loadTodaysActions() {
     el.innerHTML = '<div class="loading"><div class="spinner"></div><br>Analyzing 200+ stocks across US & EU markets...</div>';
     saveSettings();
     try {
-        const r = await fetch(`/api/todays-actions?investment=${investment}&strategy=${currentStrategy}`);
-        const j = await r.json();
+        // Fetch actions and market regime in parallel
+        const [actionsRes, regimeRes] = await Promise.all([
+            fetch(`/api/todays-actions?investment=${investment}&strategy=${currentStrategy}`),
+            fetch('/api/market-regime').catch(() => null)
+        ]);
+        const j = await actionsRes.json();
         if (j.status !== 'ok') throw new Error(j.message);
+
+        // Add market regime to data if available
+        let regimeData = null;
+        if (regimeRes) {
+            try { const rj = await regimeRes.json(); if (rj.status === 'ok') regimeData = rj.data; } catch(e) {}
+        }
+        j.data.market_regime = regimeData;
+
         renderActions(j.data); dataLoaded['actions'] = true; ts();
     } catch(e) { el.innerHTML = `<div class="error-msg">❌ ${e.message}<br><br><button class="btn" onclick="loadTodaysActions()">🔄 Try Again</button></div>`; }
 }
@@ -433,7 +445,19 @@ function renderActions(d) {
     lastActionsData = d; // Cache for mode toggle re-render
     const el = document.getElementById('actionsContent');
     const sm = simpleMode;
-    let h = `<div class="sentiment-bar ${d.sentiment.color}"><strong>${d.sentiment.label}</strong> — ${d.sentiment.desc}<span style="margin-left:auto;font-size:0.8rem">${d.strategy_label} · $${d.investment.toLocaleString()}</span></div>`;
+    // Market regime banner
+    let h = '';
+    if (d.market_regime && d.market_regime.regime !== 'unknown') {
+        const mr = d.market_regime;
+        const regimeColors = {bull:'green',bear:'red',correction:'yellow',sideways:'yellow'};
+        const regimeIcons = {bull:'📈',bear:'📉',correction:'⚠️',sideways:'➡️'};
+        h += `<div class="sentiment-bar ${regimeColors[mr.regime]||'yellow'}" style="margin-bottom:8px">
+            <strong>${regimeIcons[mr.regime]||'📊'} Market: ${mr.regime.toUpperCase()}</strong> — ${mr.description}
+            <span style="margin-left:auto;font-size:0.75rem">S&P 500: $${mr.sp500_price} (${mr.sp500_1m>=0?'+':''}${mr.sp500_1m}% 1M)</span>
+        </div>`;
+        if (!simpleMode) h += `<div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:12px;padding:0 4px">💡 Strategy: ${mr.strategy_hint}</div>`;
+    }
+    h += `<div class="sentiment-bar ${d.sentiment.color}"><strong>${d.sentiment.label}</strong> — ${d.sentiment.desc}<span style="margin-left:auto;font-size:0.8rem">${d.strategy_label} · $${d.investment.toLocaleString()}</span></div>`;
     if (d.actions.length > 0) {
         h += `<div style="margin-bottom:8px;font-size:0.9rem;color:var(--text-muted)">🟢 <strong style="color:var(--green)">BUY</strong> — Your investment plan:</div>`;
         d.actions.forEach(a => {
