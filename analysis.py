@@ -1981,6 +1981,111 @@ def get_ai_analysis_context(holdings=None, trade_history=None):
     return "\n".join(context_parts)
 
 
+def get_stock_news(ticker_str):
+    """
+    Get recent news headlines for a stock using yfinance.
+    Returns headlines that the AI can analyze for sentiment.
+    """
+    ticker = ticker_str.strip().upper()
+    try:
+        t = yf.Ticker(ticker)
+        news = t.news if hasattr(t, 'news') else []
+        headlines = []
+        for item in (news or [])[:8]:
+            title = item.get("title", "")
+            publisher = item.get("publisher", "")
+            link = item.get("link", "")
+            pub_date = ""
+            if item.get("providerPublishTime"):
+                pub_date = datetime.fromtimestamp(item["providerPublishTime"]).strftime("%Y-%m-%d")
+            if title:
+                headlines.append({
+                    "title": title,
+                    "publisher": publisher,
+                    "date": pub_date,
+                    "link": link,
+                })
+        return {"ticker": ticker, "headlines": headlines, "count": len(headlines)}
+    except Exception as e:
+        return {"ticker": ticker, "headlines": [], "count": 0, "error": str(e)}
+
+
+def get_earnings_info(ticker_str):
+    """
+    Check if a stock has upcoming earnings.
+    Returns earnings date if available.
+    """
+    ticker = ticker_str.strip().upper()
+    try:
+        t = yf.Ticker(ticker)
+        cal = t.calendar if hasattr(t, 'calendar') else None
+        if cal is not None and not (isinstance(cal, pd.DataFrame) and cal.empty):
+            # Try to extract earnings date
+            if isinstance(cal, dict):
+                earnings_date = cal.get("Earnings Date", [])
+                if earnings_date:
+                    if isinstance(earnings_date, list) and len(earnings_date) > 0:
+                        ed = earnings_date[0]
+                        if hasattr(ed, 'strftime'):
+                            return {"ticker": ticker, "earnings_date": ed.strftime("%Y-%m-%d"), "has_upcoming": True}
+                        return {"ticker": ticker, "earnings_date": str(ed), "has_upcoming": True}
+            elif isinstance(cal, pd.DataFrame):
+                if "Earnings Date" in cal.columns:
+                    dates = cal["Earnings Date"].tolist()
+                    if dates:
+                        return {"ticker": ticker, "earnings_date": str(dates[0]), "has_upcoming": True}
+        return {"ticker": ticker, "earnings_date": None, "has_upcoming": False}
+    except Exception:
+        return {"ticker": ticker, "earnings_date": None, "has_upcoming": False}
+
+
+def get_portfolio_intelligence(holdings, trade_history=None):
+    """
+    Get comprehensive intelligence for portfolio holdings:
+    - News headlines for each stock
+    - Earnings calendar warnings
+    - Market regime context
+    Returns enriched data for AI analysis.
+    """
+    intelligence = {
+        "news": {},
+        "earnings_warnings": [],
+        "market_regime": None,
+    }
+
+    # Get market regime
+    try:
+        intelligence["market_regime"] = get_market_regime()
+    except Exception:
+        pass
+
+    # Get news and earnings for each holding
+    tickers = list(set(h.get("ticker", "").upper().strip() for h in holdings if h.get("ticker")))[:10]
+
+    for ticker in tickers:
+        # News
+        try:
+            news = get_stock_news(ticker)
+            if news["count"] > 0:
+                intelligence["news"][ticker] = news["headlines"][:3]  # Top 3 headlines
+        except Exception:
+            pass
+
+        # Earnings
+        try:
+            earnings = get_earnings_info(ticker)
+            if earnings.get("has_upcoming"):
+                intelligence["earnings_warnings"].append({
+                    "ticker": ticker,
+                    "date": earnings["earnings_date"],
+                    "warning": f"⚠️ {ticker} has earnings coming up on {earnings['earnings_date']} — expect high volatility"
+                })
+        except Exception:
+            pass
+
+    return intelligence
+
+
 def get_chat_context(holdings=None, trade_history=None):
     """
     Build a context summary for the AI chatbot.

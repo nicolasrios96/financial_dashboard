@@ -21,6 +21,9 @@ from analysis import (
     get_chat_context,
     get_market_regime,
     get_ai_analysis_context,
+    get_stock_news,
+    get_earnings_info,
+    get_portfolio_intelligence,
 )
 import socket
 import traceback
@@ -433,6 +436,41 @@ def api_chat_context():
         # Combine: AI analysis data + role instructions
         full_context = ai_context + "\n\n" + chat_context
         return safe_jsonify({"status": "ok", "context": full_context})
+    except Exception as e:
+        traceback.print_exc()
+        return safe_jsonify({"status": "error", "message": str(e)}, 500)
+
+
+@app.route("/api/news")
+def api_news():
+    """Get news headlines for a stock ticker."""
+    try:
+        ticker = request.args.get("ticker", "").strip().upper()
+        if not ticker:
+            return safe_jsonify({"status": "error", "message": "No ticker provided."}, 400)
+        cache_key = f"news_{ticker}"
+        now = datetime.now().timestamp()
+        if cache_key in _cache:
+            data, ts = _cache[cache_key]
+            if now - ts < 300:  # 5 min cache for news
+                return safe_jsonify({"status": "ok", "data": data})
+        data = get_stock_news(ticker)
+        _cache[cache_key] = (data, now)
+        return safe_jsonify({"status": "ok", "data": data})
+    except Exception as e:
+        traceback.print_exc()
+        return safe_jsonify({"status": "error", "message": str(e)}, 500)
+
+
+@app.route("/api/intelligence", methods=["POST"])
+def api_intelligence():
+    """Get comprehensive portfolio intelligence: news, earnings, market regime."""
+    try:
+        body = request.get_json(force=True)
+        holdings = body.get("holdings", [])[:10]
+        trade_history = body.get("trade_history", [])[:50]
+        data = get_portfolio_intelligence(holdings, trade_history)
+        return safe_jsonify({"status": "ok", "data": data})
     except Exception as e:
         traceback.print_exc()
         return safe_jsonify({"status": "error", "message": str(e)}, 500)
