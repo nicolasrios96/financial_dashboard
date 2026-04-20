@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📊 Financial Investment Dashboard</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=6">
+</head>
+<body>
+
+<div class="header">
+    <div class="header-content">
+        <h1>📊 Financial Investment Dashboard</h1>
+        <div class="search-bar">
+            <input type="text" id="searchInput" placeholder="🔍 Search any ticker (e.g. DUOL, TSLA, BTC-USD)..." autocomplete="off">
+            <div id="searchResult" class="search-result" style="display:none"></div>
+        </div>
+        <div class="header-actions">
+            <span class="last-updated" id="lastUpdated"></span>
+            <button class="btn mode-toggle" id="modeToggle" onclick="toggleSimpleMode()" title="Toggle Simple/Advanced mode">🎓 Simple</button>
+            <button class="btn" onclick="openSettings()" title="Settings">⚙️</button>
+            <button class="btn" onclick="refreshAll()">🔄</button>
+        </div>
+    </div>
+</div>
+
+<div class="tabs">
+    <div class="tab active" data-tab="actions">🎯 Today's Actions</div>
+    <div class="tab" data-tab="holdings">💼 My Holdings</div>
+    <div class="tab" data-tab="goal">💰 Goal Calculator</div>
+    <div class="tab" data-tab="portfolios">📊 Portfolios</div>
+    <div class="tab" data-tab="market">📈 Market & Movers</div>
+    <div class="tab" data-tab="commodities">🏆 Commodities</div>
+</div>
+
+<div class="content">
+    <div class="disclaimer">
+        ⚠️ <strong>Disclaimer:</strong> Algorithm-based technical analysis for educational purposes only. NOT professional financial advice. Always do your own research.
+    </div>
+
+    <div class="beginner-tips" id="beginnerTips">
+        💡 <strong>New to investing?</strong> Start here → 
+        1️⃣ Go to <strong>📊 Portfolios</strong> tab and pick a risk level · 
+        2️⃣ Open your broker app (Revolut, eToro, IBKR) · 
+        3️⃣ Buy the stocks listed · 
+        4️⃣ Check back weekly for updates · 
+        ⚠️ Never invest money you can't afford to lose · 
+        <a href="#" onclick="document.getElementById('beginnerTips').style.display='none';localStorage.setItem('hideTips','1');return false" style="color:var(--accent);margin-left:8px">Hide tips</a>
+    </div>
+
+    <!-- ==================== TODAY'S ACTIONS ==================== -->
+    <div class="tab-panel active" id="panel-actions">
+        <div class="card">
+            <h2>🎯 Today's Actions — Just Follow This Plan</h2>
+            <p class="subtitle">Enter how much you want to invest, pick a strategy, and get your exact buy list. Scanning 200+ stocks across US & EU markets.</p>
+            <div class="action-controls">
+                <div class="invest-input-group">
+                    <label>💰 I want to invest:</label>
+                    <input type="number" id="actionInvestment" value="1000" min="1" step="100">
+                </div>
+                <div class="strategy-selector">
+                    <button class="strategy-btn" data-strategy="quick" onclick="selectStrategy('quick',this)">🔄 Quick Flip<span class="strategy-desc">1-2 weeks</span></button>
+                    <button class="strategy-btn active" data-strategy="best" onclick="selectStrategy('best',this)">⭐ Best Mix<span class="strategy-desc">Auto-pick</span></button>
+                    <button class="strategy-btn" data-strategy="long" onclick="selectStrategy('long',this)">📈 Long Hold<span class="strategy-desc">3-12 months</span></button>
+                </div>
+                <button class="btn btn-primary" onclick="loadTodaysActions()">🚀 Get My Plan</button>
+            </div>
+            <div id="actionsContent">
+                <div class="loading"><div class="spinner"></div><br>Analyzing 200+ stocks across US & EU markets...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== MY PORTFOLIO ==================== -->
+    <div class="tab-panel" id="panel-holdings">
+        <div class="card">
+            <h2>💼 My Portfolio — Track & Get Advice</h2>
+            <p class="subtitle">Add your stocks with buy price and date. Sell them to track your win/loss history. Get personalized advice based on your actual P&L.</p>
+            <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+                <button class="btn" onclick="exportPortfolio()">📥 Export</button>
+                <button class="btn" onclick="document.getElementById('importFile').click()">📤 Import</button>
+                <input type="file" id="importFile" accept=".json" style="display:none" onchange="importPortfolio(event)">
+                <button class="btn" onclick="syncToServer()" title="Save to server">💾 Save to Server</button>
+                <button class="btn" onclick="syncFromServer()" title="Load from server">☁️ Load from Server</button>
+            </div>
+            <div style="background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:20px">
+                <div style="font-size:0.9rem;font-weight:600;margin-bottom:12px">➕ Add a holding:</div>
+                <div class="invest-input-group" style="margin-bottom:0">
+                    <label>Ticker:</label>
+                    <input type="text" id="addTicker" placeholder="AMZN" style="width:100px;text-transform:uppercase">
+                    <label>Shares:</label>
+                    <input type="number" id="addShares" placeholder="3" min="0.0001" step="0.01" style="width:80px">
+                    <label>Buy Price ($):</label>
+                    <input type="number" id="addBuyPrice" placeholder="185.50" min="0.01" step="0.01" style="width:110px">
+                    <label>Buy Date:</label>
+                    <input type="date" id="addBuyDate" style="width:150px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text)">
+                    <button class="btn btn-primary" onclick="addHolding()">➕ Add</button>
+                </div>
+            </div>
+            <div id="portfolioHoldings"></div>
+            <div id="holdingsContent"></div>
+            <div id="tradeHistorySection" style="margin-top:24px"></div>
+        </div>
+    </div>
+
+    <!-- ==================== GOAL CALCULATOR ==================== -->
+    <div class="tab-panel" id="panel-goal">
+        <div class="card">
+            <h2>💰 Goal Calculator — "I want to make $X"</h2>
+            <p class="subtitle">Tell us your target profit and timeframe. We'll show you the top 3 best ways to get there.</p>
+            <div class="invest-input-group">
+                <label>🎯 I want to make:</label>
+                <input type="number" id="goalAmount" value="200" min="1" step="10" style="width:120px">
+                <label>📅 In:</label>
+                <input type="number" id="goalMonths" value="1" min="1" max="60" step="1" style="width:80px">
+                <span style="color:var(--text-muted)">month(s)</span>
+                <button class="btn btn-primary" onclick="calcGoal()">🔍 Find Best Options</button>
+            </div>
+            <div id="goalResult"></div>
+        </div>
+        <div class="card">
+            <h2>📊 Compound Interest Calculator</h2>
+            <p class="subtitle">See how monthly investing grows over time.</p>
+            <div class="invest-input-group">
+                <label>Initial ($):</label>
+                <input type="number" id="compInitial" value="1000" min="0" step="100" style="width:100px">
+                <label>Monthly ($):</label>
+                <input type="number" id="compMonthly" value="200" min="0" step="10" style="width:100px">
+                <label>Months:</label>
+                <input type="number" id="compMonths" value="24" min="1" max="360" step="1" style="width:80px">
+                <label>Return (%):</label>
+                <input type="number" id="compReturn" value="10" min="0" max="100" step="0.5" style="width:80px">
+                <button class="btn" onclick="calcCompound()">Calculate</button>
+            </div>
+            <div id="compoundResult"></div>
+        </div>
+    </div>
+
+    <!-- ==================== PORTFOLIOS ==================== -->
+    <div class="tab-panel" id="panel-portfolios">
+        <div class="card">
+            <h2>📊 Pick Your Portfolio — Exact Buy List</h2>
+            <p class="subtitle">Choose your risk level and get an exact list of what to buy.</p>
+            <div class="profile-selector">
+                <div class="profile-card" onclick="selectProfile('conservative',this)">
+                    <div class="emoji">🟢</div><div class="label">Conservative</div>
+                    <div class="desc">Low risk · 5-7% · Bonds & dividends</div>
+                </div>
+                <div class="profile-card active" onclick="selectProfile('moderate',this)">
+                    <div class="emoji">🟡</div><div class="label">Moderate</div>
+                    <div class="desc">Balanced · 8-11% · Stocks & bonds</div>
+                </div>
+                <div class="profile-card" onclick="selectProfile('aggressive',this)">
+                    <div class="emoji">🔴</div><div class="label">Aggressive</div>
+                    <div class="desc">High growth · 12-18% · Tech heavy</div>
+                </div>
+            </div>
+            <div class="invest-input-group">
+                <label>💰 Investment ($):</label>
+                <input type="number" id="investmentAmount" value="10000" min="1" step="1">
+                <label>📅 Months:</label>
+                <input type="number" id="timeframeMonths" value="12" min="1" max="60" step="1" style="width:80px">
+                <button class="btn btn-primary" onclick="loadPortfolio()">Calculate</button>
+            </div>
+            <div id="portfolioContent"><div class="loading"><div class="spinner"></div><br>Select a profile and click Calculate...</div></div>
+        </div>
+    </div>
+
+    <!-- ==================== MARKET & MOVERS ==================== -->
+    <div class="tab-panel" id="panel-market">
+        <div class="grid-2">
+            <div class="card"><h2>🇺🇸 US Markets</h2><div id="usIndices" class="index-grid"><div class="loading"><div class="spinner"></div><br>Loading...</div></div></div>
+            <div class="card"><h2>🇪🇺 European Markets</h2><div id="euIndices" class="index-grid"><div class="loading"><div class="spinner"></div><br>Loading...</div></div></div>
+        </div>
+        <div class="grid-2">
+            <div class="card"><h2>🚀 Top Gainers</h2><div id="gainersTable" class="table-wrap"><div class="loading"><div class="spinner"></div><br>Loading...</div></div></div>
+            <div class="card"><h2>📉 Top Losers</h2><div id="losersTable" class="table-wrap"><div class="loading"><div class="spinner"></div><br>Loading...</div></div></div>
+        </div>
+    </div>
+
+    <!-- ==================== COMMODITIES ==================== -->
+    <div class="tab-panel" id="panel-commodities">
+        <div class="card">
+            <h2>🏆 Commodities — Gold, Silver, Oil & More</h2>
+            <p class="subtitle">Real-time commodity futures prices. Trade them via ETFs like GLD (Gold), SLV (Silver), USO (Oil).</p>
+            <div id="commoditiesContent"><div class="loading"><div class="spinner"></div><br>Loading commodity prices...</div></div>
+        </div>
+    </div>
+</div>
+
+<!-- Sell Modal -->
+<div id="sellModal" class="modal-overlay" style="display:none">
+    <div class="modal-content">
+        <h3>💰 Sell Holding</h3>
+        <p id="sellModalInfo" style="color:var(--text-muted);font-size:0.9rem;margin-bottom:16px"></p>
+        <div class="invest-input-group" style="flex-direction:column;align-items:stretch">
+            <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px">
+                <label style="min-width:100px">Shares to sell:</label>
+                <input type="number" id="sellShares" min="0.0001" step="0.01" style="flex:1">
+            </div>
+            <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px">
+                <label style="min-width:100px">Sell Price ($):</label>
+                <input type="number" id="sellPrice" min="0.01" step="0.01" style="flex:1">
+            </div>
+            <div style="display:flex;gap:12px;align-items:center;margin-bottom:16px">
+                <label style="min-width:100px">Sell Date:</label>
+                <input type="date" id="sellDate" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text)">
+            </div>
+            <div style="display:flex;gap:8px;justify-content:flex-end">
+                <button class="btn" onclick="closeSellModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="confirmSell()">💰 Confirm Sell</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Settings Modal -->
+<div id="settingsModal" class="modal-overlay" style="display:none">
+    <div class="modal-content" style="max-width:500px">
+        <h3>⚙️ Settings</h3>
+        <div style="margin-top:16px">
+            <div style="font-size:0.9rem;font-weight:600;margin-bottom:8px">🤖 AI Chatbot</div>
+            <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
+                <label style="font-size:0.85rem;color:var(--text-muted);min-width:70px">Provider:</label>
+                <select id="aiProvider" onchange="onProviderChange()" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-size:0.9rem">
+                    <option value="groq">Groq (free, works in EU) ⭐ Recommended</option>
+                    <option value="gemini">Google Gemini</option>
+                </select>
+            </div>
+            <p id="providerHelp" style="font-size:0.8rem;color:var(--text-muted);margin-bottom:12px">
+                Get a free API key at <a href="https://console.groq.com" target="_blank" style="color:var(--accent)">console.groq.com</a> — sign up with Google, no billing required.
+            </p>
+            <div style="display:flex;gap:8px;margin-bottom:12px">
+                <input type="password" id="geminiApiKey" placeholder="Paste your API key..." style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-size:0.9rem">
+                <button class="btn" onclick="toggleKeyVisibility()">👁️</button>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px">
+                <label style="font-size:0.85rem;color:var(--text-muted);min-width:70px">Model:</label>
+                <select id="geminiModel" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-size:0.9rem">
+                    <option value="llama-3.3-70b-versatile">Llama 3.3 70B (best, free)</option>
+                    <option value="llama-3.1-8b-instant">Llama 3.1 8B (fastest, free)</option>
+                    <option value="mixtral-8x7b-32768">Mixtral 8x7B (good, free)</option>
+                    <option value="gemma2-9b-it">Gemma 2 9B (Google, free)</option>
+                </select>
+            </div>
+            <button class="btn" onclick="testAIKey()">🧪 Test Connection</button>
+            <span id="geminiTestResult" style="margin-left:8px;font-size:0.85rem"></span>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:20px;border-top:1px solid var(--border);padding-top:16px">
+            <button class="btn" onclick="closeSettings()">Cancel</button>
+            <button class="btn btn-primary" onclick="saveGeminiSettings()">💾 Save Settings</button>
+        </div>
+    </div>
+</div>
+
+<!-- Chat Panel -->
+<button id="chatToggle" class="chat-toggle" onclick="toggleChat()" title="AI Chat (Ctrl+/)">💬</button>
+<div id="chatPanel" class="chat-panel" style="display:none">
+    <div class="chat-header">
+        <span>🤖 AI Financial Advisor</span>
+        <button class="btn" style="padding:4px 8px;font-size:0.8rem" onclick="toggleChat()">✕</button>
+    </div>
+    <div class="chat-quick-prompts">
+        <button onclick="sendQuickPrompt('Analyze my portfolio and tell me what to do')">📊 Analyze Portfolio</button>
+        <button onclick="sendQuickPrompt('What should I buy today with $1000?')">🎯 What to Buy</button>
+        <button onclick="sendQuickPrompt('Give me a market outlook for this week')">📈 Market Outlook</button>
+    </div>
+    <div id="chatMessages" class="chat-messages">
+        <div class="chat-msg ai">👋 Hi! I'm your AI financial advisor. Ask me anything about stocks, your portfolio, or market conditions. <br><br><em style="font-size:0.8rem;color:var(--text-muted)">Set your Gemini API key in ⚙️ Settings first.</em></div>
+    </div>
+    <div class="chat-input-area">
+        <input type="text" id="chatInput" placeholder="Ask about stocks, portfolio, market..." onkeydown="if(event.key==='Enter')sendChat()">
+        <button class="btn btn-primary" style="padding:10px 16px" onclick="sendChat()">➤</button>
+    </div>
+</div>
+
+<script src="{{ url_for('static', filename='main.js') }}?v=6"></script>
+</body>
+</html>

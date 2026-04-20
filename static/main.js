@@ -1,0 +1,605 @@
+/* ============================================================
+   Financial Investment Dashboard — JavaScript
+   Supports: 200+ stocks, commodities, sell tracking, trade history,
+   portfolio export/import, server sync, stock search, Gemini AI chat.
+   ============================================================ */
+
+// State
+const dataLoaded = {};
+let currentProfile = 'moderate';
+let currentStrategy = 'best';
+let sellTargetIndex = -1;
+let chatOpen = false;
+let searchTimeout = null;
+const COLORS = ['#448aff','#00c853','#ffd600','#ff6d00','#b388ff','#ff1744','#00bcd4','#8bc34a','#e91e63','#9c27b0','#009688','#ff5722'];
+const COMMODITY_ICONS = {'Gold':'🥇','Silver':'🥈','Crude Oil (WTI)':'🛢️','Brent Crude':'🛢️','Natural Gas':'🔥','Copper':'🔶','Platinum':'💎','Palladium':'💎','Corn':'🌽','Wheat':'🌾'};
+
+// Restore settings
+(function restoreSettings() {
+    const saved = localStorage.getItem('dashSettings');
+    if (saved) { try { const s = JSON.parse(saved); if (s.investment) document.getElementById('actionInvestment').value = s.investment; if (s.strategy) currentStrategy = s.strategy; if (s.profile) currentProfile = s.profile; } catch(e) {} }
+    // Restore AI settings
+    const gk = localStorage.getItem('geminiApiKey');
+    const gm = localStorage.getItem('geminiModel');
+    const gp = localStorage.getItem('aiProvider') || 'groq';
+    if (gk) document.getElementById('geminiApiKey').value = gk;
+    if (gm) document.getElementById('geminiModel').value = gm;
+    document.getElementById('aiProvider').value = gp;
+    onProviderChange();
+})();
+
+let simpleMode = localStorage.getItem('simpleMode') !== 'false'; // Default: simple mode ON
+
+function saveSettings() {
+    localStorage.setItem('dashSettings', JSON.stringify({ investment: document.getElementById('actionInvestment').value, strategy: currentStrategy, profile: currentProfile }));
+}
+
+// ============================================================
+// SIMPLE MODE — Beginner-friendly view
+// ============================================================
+// Store last fetched data for re-rendering on mode switch
+let lastActionsData = null;
+
+function toggleSimpleMode() {
+    simpleMode = !simpleMode;
+    localStorage.setItem('simpleMode', simpleMode);
+    updateModeButton();
+    document.body.classList.toggle('advanced-mode', !simpleMode);
+    // Re-render with cached data (no re-fetch needed)
+    if (lastActionsData) renderActions(lastActionsData);
+    showToast(simpleMode ? '🎓 Simple mode — beginner-friendly view' : '📊 Advanced mode — all technical details', 'info');
+}
+
+function updateModeButton() {
+    const btn = document.getElementById('modeToggle');
+    btn.textContent = simpleMode ? '🎓 Simple' : '📊 Advanced';
+    btn.title = simpleMode ? 'Switch to Advanced mode (show technical details)' : 'Switch to Simple mode (hide technical details)';
+}
+
+// Helper: convert score to simple label
+function scoreToLabel(score) {
+    if (score >= 50) return { text: 'Strong Buy ⭐⭐⭐', cls: 'positive', emoji: '🟢' };
+    if (score >= 25) return { text: 'Good Buy ⭐⭐', cls: 'positive', emoji: '🟢' };
+    if (score >= 0) return { text: 'Okay to Hold ⭐', cls: '', emoji: '🟡' };
+    if (score >= -25) return { text: 'Be Careful', cls: 'negative', emoji: '🟡' };
+    return { text: 'Avoid / Sell', cls: 'negative', emoji: '🔴' };
+}
+
+// Helper: simple reason (no jargon)
+function simpleReason(result) {
+    const parts = [];
+    if (result.pct_1w > 3) parts.push(`Going up (+${result.pct_1w.toFixed(1)}% this week)`);
+    else if (result.pct_1w < -3) parts.push(`Going down (${result.pct_1w.toFixed(1)}% this week)`);
+    if (result.trend === 'uptrend') parts.push('Steady upward trend');
+    else if (result.trend === 'downtrend') parts.push('Downward trend — risky');
+    if (result.pct_from_high < -30) parts.push(`${Math.abs(result.pct_from_high).toFixed(0)}% below its peak`);
+    if (result.score >= 40) parts.push('Multiple positive signals');
+    else if (result.score <= -30) parts.push('Multiple warning signs');
+    return parts.slice(0, 2).join(' · ') || 'Mixed signals — proceed with caution';
+}
+
+// Init mode
+updateModeButton();
+document.body.classList.toggle('advanced-mode', !simpleMode);
+
+// ============================================================
+// Toast
+// ============================================================
+function showToast(message, type = 'info') {
+    const existing = document.querySelector('.toast'); if (existing) existing.remove();
+    const toast = document.createElement('div'); toast.className = `toast ${type}`; toast.textContent = message;
+    document.body.appendChild(toast); setTimeout(() => toast.remove(), 3000);
+}
+
+// ============================================================
+// Tabs
+// ============================================================
+document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
+        loadTabData(tab.dataset.tab);
+    });
+});
+function loadTabData(name) { if (dataLoaded[name]) return; switch(name) { case 'actions': loadTodaysActions(); break; case 'market': loadMarketData(); break; case 'commodities': loadCommodities(); break; } }
+
+// ============================================================
+// Utilities
+// ============================================================
+const cc = v => (v||0) >= 0 ? 'positive' : 'negative';
+const ci = v => (v||0) >= 0 ? '▲' : '▼';
+const fc = v => { v=v||0; return (v>=0?'+':'')+v.toFixed(2)+'%'; };
+const ts = () => document.getElementById('lastUpdated').textContent = 'Updated: ' + new Date().toLocaleTimeString();
+function urgencyBadge(u) { if (u==='Act now') return '<span class="urgency urgency-now">⚡ Act now</span>'; if (u==='This week') return '<span class="urgency urgency-week">📅 This week</span>'; return '<span class="urgency urgency-later">🕐 When convenient</span>'; }
+
+// ============================================================
+// SEARCH — Any ticker
+// ============================================================
+document.getElementById('searchInput').addEventListener('input', function() {
+    clearTimeout(searchTimeout);
+    const val = this.value.trim().toUpperCase();
+    if (val.length < 1) { document.getElementById('searchResult').style.display = 'none'; return; }
+    searchTimeout = setTimeout(() => searchTicker(val), 600);
+});
+document.getElementById('searchInput').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') { clearTimeout(searchTimeout); const val = this.value.trim().toUpperCase(); if (val) searchTicker(val); }
+    if (e.key === 'Escape') { document.getElementById('searchResult').style.display = 'none'; this.blur(); }
+});
+document.addEventListener('click', function(e) { if (!e.target.closest('.search-bar')) document.getElementById('searchResult').style.display = 'none'; });
+
+async function searchTicker(ticker) {
+    const el = document.getElementById('searchResult');
+    el.style.display = 'block';
+    el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted)"><div class="spinner" style="display:inline-block;width:24px;height:24px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite"></div><br>Searching ' + ticker + '...</div>';
+    try {
+        const r = await fetch(`/api/search?ticker=${encodeURIComponent(ticker)}`);
+        const j = await r.json();
+        if (j.status !== 'ok') { el.innerHTML = `<div style="color:var(--red);padding:8px">${j.message}</div>`; return; }
+        renderSearchResult(j.data);
+    } catch(e) { el.innerHTML = `<div style="color:var(--red);padding:8px">Error: ${e.message}</div>`; }
+}
+
+function renderSearchResult(d) {
+    const el = document.getElementById('searchResult');
+    const scoreClass = d.score >= 25 ? 'badge-green' : d.score >= 0 ? 'badge-yellow' : 'badge-red';
+    const trendIcon = d.trend === 'uptrend' ? '📈' : d.trend === 'downtrend' ? '📉' : '➡️';
+    let h = `<div class="search-stock-card">
+        <div class="stock-main">
+            <h3><span class="ticker">${d.ticker}</span> — ${d.name} <span class="badge ${d.market==='US'?'badge-blue':d.market==='EU'?'badge-yellow':'badge-orange'}" style="font-size:0.6rem">${d.market}</span></h3>
+            <div style="font-size:0.85rem;margin-top:4px">
+                <span class="badge ${scoreClass}">Score: ${d.score}</span>
+                <span style="margin-left:8px">${d.action}</span>
+                <span style="margin-left:8px">${trendIcon} ${d.trend}</span>
+            </div>
+            <div class="stock-metrics">
+                <div class="metric">RSI: <strong>${d.rsi}</strong></div>
+                <div class="metric">Week: <strong class="${cc(d.pct_1w)}">${fc(d.pct_1w)}</strong></div>
+                <div class="metric">Month: <strong class="${cc(d.pct_1m)}">${fc(d.pct_1m)}</strong></div>
+                ${d.pct_3m != null ? `<div class="metric">3M: <strong class="${cc(d.pct_3m)}">${fc(d.pct_3m)}</strong></div>` : ''}
+                ${d.sma_200 ? `<div class="metric">SMA200: <strong>$${d.sma_200}</strong></div>` : ''}
+                <div class="metric">From High: <strong class="${cc(d.pct_from_high)}">${fc(d.pct_from_high)}</strong></div>
+            </div>
+        </div>
+        <div class="stock-price">
+            <div class="price">$${d.price}</div>
+            <div class="${cc(d.daily_change)}" style="font-size:0.9rem;font-weight:600">${ci(d.daily_change)} ${fc(d.daily_change)}</div>
+            <div style="font-size:0.75rem;color:var(--text-muted);margin-top:4px">
+                🎯 $${d.target_price}<br>🛑 $${d.stop_loss}
+            </div>
+        </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
+        <button class="btn" style="font-size:0.8rem" onclick="addFromSearch('${d.ticker}',${d.price})">➕ Add to Portfolio</button>
+        <button class="btn" style="font-size:0.8rem" onclick="askAIAbout('${d.ticker}')">🤖 Ask AI about ${d.ticker}</button>
+    </div>`;
+    el.innerHTML = h;
+}
+
+function addFromSearch(ticker, price) {
+    myPortfolio.push({ ticker, shares: 1, buy_price: price, buy_date: new Date().toISOString().split('T')[0] });
+    savePortfolio(); renderPortfolioList();
+    showToast(`Added 1 share of ${ticker} at $${price}`, 'success');
+    document.getElementById('searchResult').style.display = 'none';
+}
+
+// ============================================================
+// SETTINGS — Gemini API
+// ============================================================
+function openSettings() { document.getElementById('settingsModal').style.display = 'flex'; }
+function closeSettings() { document.getElementById('settingsModal').style.display = 'none'; }
+document.getElementById('settingsModal').addEventListener('click', function(e) { if (e.target === this) closeSettings(); });
+
+function toggleKeyVisibility() {
+    const inp = document.getElementById('geminiApiKey');
+    inp.type = inp.type === 'password' ? 'text' : 'password';
+}
+
+// Provider change handler
+function onProviderChange() {
+    const provider = document.getElementById('aiProvider').value;
+    const modelSelect = document.getElementById('geminiModel');
+    const helpEl = document.getElementById('providerHelp');
+
+    if (provider === 'groq') {
+        modelSelect.innerHTML = `
+            <option value="llama-3.3-70b-versatile">Llama 3.3 70B (best, free)</option>
+            <option value="llama-3.1-8b-instant">Llama 3.1 8B (fastest, free)</option>
+            <option value="mixtral-8x7b-32768">Mixtral 8x7B (good, free)</option>
+            <option value="gemma2-9b-it">Gemma 2 9B (Google, free)</option>`;
+        helpEl.innerHTML = 'Get a free API key at <a href="https://console.groq.com" target="_blank" style="color:var(--accent)">console.groq.com</a> — sign up with Google, no billing required. Works in EU.';
+    } else {
+        modelSelect.innerHTML = `
+            <option value="gemini-2.0-flash">Gemini 2.0 Flash (fast)</option>
+            <option value="gemini-2.0-flash-lite">Gemini 2.0 Flash Lite (fastest)</option>
+            <option value="gemini-1.5-flash">Gemini 1.5 Flash (stable)</option>
+            <option value="gemini-1.5-pro-latest">Gemini 1.5 Pro (best, paid)</option>`;
+        helpEl.innerHTML = 'Get an API key at <a href="https://aistudio.google.com/apikey" target="_blank" style="color:var(--accent)">aistudio.google.com/apikey</a>. Free tier may not work in EU — enable billing if needed.';
+    }
+    // Restore saved model if it matches
+    const savedModel = localStorage.getItem('geminiModel');
+    if (savedModel) { const opt = modelSelect.querySelector(`option[value="${savedModel}"]`); if (opt) modelSelect.value = savedModel; }
+}
+
+function saveGeminiSettings() {
+    const key = document.getElementById('geminiApiKey').value.trim();
+    const model = document.getElementById('geminiModel').value;
+    const provider = document.getElementById('aiProvider').value;
+    if (key) localStorage.setItem('geminiApiKey', key);
+    else localStorage.removeItem('geminiApiKey');
+    localStorage.setItem('geminiModel', model);
+    localStorage.setItem('aiProvider', provider);
+    closeSettings();
+    showToast('Settings saved!', 'success');
+}
+
+async function testAIKey() {
+    const key = document.getElementById('geminiApiKey').value.trim();
+    const model = document.getElementById('geminiModel').value;
+    const provider = document.getElementById('aiProvider').value;
+    const el = document.getElementById('geminiTestResult');
+    if (!key) { el.innerHTML = '<span style="color:var(--red)">❌ No key entered</span>'; return; }
+    el.innerHTML = '<span style="color:var(--text-muted)">Testing...</span>';
+    try {
+        let r;
+        if (provider === 'groq') {
+            r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+                method: 'POST',
+                headers: {'Content-Type':'application/json', 'Authorization': `Bearer ${key}`},
+                body: JSON.stringify({model: model, messages:[{role:'user',content:"Say OK"}], max_tokens: 5})
+            });
+        } else {
+            r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {
+                method: 'POST', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({contents:[{parts:[{text:"Say OK"}]}]})
+            });
+        }
+        if (r.ok) { el.innerHTML = '<span style="color:var(--green)">✅ Connected!</span>'; }
+        else {
+            const j = await r.json();
+            const msg = j.error?.message || 'Failed';
+            if (msg.includes('quota') || msg.includes('Quota')) {
+                el.innerHTML = `<span style="color:var(--red)">❌ Quota exceeded. Try Groq provider instead (free, works in EU).</span>`;
+            } else if (msg.includes('not found') || msg.includes('not supported')) {
+                el.innerHTML = `<span style="color:var(--red)">❌ Model not available. Try a different model.</span>`;
+            } else if (msg.includes('Invalid API Key') || msg.includes('invalid_api_key')) {
+                el.innerHTML = `<span style="color:var(--red)">❌ Invalid API key. Check and try again.</span>`;
+            } else {
+                el.innerHTML = `<span style="color:var(--red)">❌ ${msg}</span>`;
+            }
+        }
+    } catch(e) { el.innerHTML = `<span style="color:var(--red)">❌ ${e.message}</span>`; }
+}
+
+// ============================================================
+// CHAT — Gemini AI
+// ============================================================
+let chatHistory = [];
+
+function toggleChat() {
+    chatOpen = !chatOpen;
+    document.getElementById('chatPanel').style.display = chatOpen ? 'flex' : 'none';
+    document.getElementById('chatToggle').style.display = chatOpen ? 'none' : 'flex';
+    if (chatOpen) document.getElementById('chatInput').focus();
+}
+
+function sendQuickPrompt(text) {
+    document.getElementById('chatInput').value = text;
+    sendChat();
+}
+
+function askAIAbout(ticker) {
+    if (!chatOpen) toggleChat();
+    document.getElementById('chatInput').value = `Should I buy ${ticker}? Analyze it for me.`;
+    sendChat();
+}
+
+async function sendChat() {
+    const input = document.getElementById('chatInput');
+    const msg = input.value.trim();
+    if (!msg) return;
+    input.value = '';
+
+    const key = localStorage.getItem('geminiApiKey');
+    const model = localStorage.getItem('geminiModel') || 'llama-3.3-70b-versatile';
+    const provider = localStorage.getItem('aiProvider') || 'groq';
+
+    const messagesEl = document.getElementById('chatMessages');
+    messagesEl.innerHTML += `<div class="chat-msg user">${escapeHtml(msg)}</div>`;
+    messagesEl.innerHTML += `<div class="chat-msg ai loading" id="chatLoading">🤔 Thinking...</div>`;
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+
+    if (!key) {
+        const link = provider === 'groq' ? 'https://console.groq.com' : 'https://aistudio.google.com/apikey';
+        document.getElementById('chatLoading').outerHTML = `<div class="chat-msg ai">⚠️ Please set your API key in ⚙️ Settings first. <a href="${link}" target="_blank" style="color:var(--accent)">Get a free key here</a>.</div>`;
+        return;
+    }
+
+    try {
+        // Get context from server
+        let context = '';
+        try {
+            const ctxR = await fetch('/api/chat-context', {
+                method: 'POST', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({ holdings: myPortfolio, trade_history: myTradeHistory })
+            });
+            const ctxJ = await ctxR.json();
+            if (ctxJ.status === 'ok') context = ctxJ.context;
+        } catch(e) {}
+
+        const systemPrompt = context + '\n\nREMINDER: You are a Senior Financial Advisor. Be confident, specific, and actionable. Use ticker symbols and numbers. Keep responses to 3-5 sentences unless asked for more detail. Always end with a brief disclaimer.';
+        let reply = '';
+
+        if (provider === 'groq') {
+            // Groq uses OpenAI-compatible API
+            const messages = [{role:'system', content: systemPrompt}];
+            // Add chat history (convert format)
+            chatHistory.forEach(h => {
+                messages.push({role: h.role === 'model' ? 'assistant' : h.role, content: h.parts[0].text});
+            });
+            messages.push({role:'user', content: msg});
+
+            const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+                method: 'POST',
+                headers: {'Content-Type':'application/json', 'Authorization': `Bearer ${key}`},
+                body: JSON.stringify({model, messages: messages.slice(-12), max_tokens: 500, temperature: 0.7})
+            });
+            const j = await r.json();
+            if (j.choices?.[0]?.message?.content) {
+                reply = j.choices[0].message.content;
+            } else if (j.error) {
+                reply = `❌ Error: ${j.error.message}`;
+            } else {
+                reply = '❌ No response. Try again.';
+            }
+        } else {
+            // Gemini API
+            chatHistory.push({role:'user', parts:[{text: msg}]});
+            const body = {
+                system_instruction: { parts: [{ text: systemPrompt }] },
+                contents: chatHistory.slice(-10),
+            };
+            const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {
+                method: 'POST', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify(body)
+            });
+            const j = await r.json();
+            if (j.candidates?.[0]?.content?.parts?.[0]?.text) {
+                reply = j.candidates[0].content.parts[0].text;
+            } else if (j.error) {
+                reply = `❌ Error: ${j.error.message}`;
+            } else {
+                reply = '❌ No response. Try again.';
+            }
+        }
+
+        // Store in unified history format
+        if (provider === 'groq') chatHistory.push({role:'user', parts:[{text: msg}]});
+        chatHistory.push({role:'model', parts:[{text: reply}]});
+
+        const loadingEl = document.getElementById('chatLoading');
+        if (loadingEl) loadingEl.outerHTML = `<div class="chat-msg ai">${formatChatResponse(reply)}</div>`;
+
+    } catch(e) {
+        const loadingEl = document.getElementById('chatLoading');
+        if (loadingEl) loadingEl.outerHTML = `<div class="chat-msg ai">❌ Error: ${e.message}</div>`;
+    }
+
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+function escapeHtml(text) { const d = document.createElement('div'); d.textContent = text; return d.innerHTML; }
+
+function formatChatResponse(text) {
+    // Basic markdown-like formatting
+    return text
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.*?)\*/g, '<em>$1</em>')
+        .replace(/`(.*?)`/g, '<code style="background:var(--bg);padding:2px 6px;border-radius:4px">$1</code>')
+        .replace(/\n/g, '<br>');
+}
+
+// Keyboard shortcuts
+document.addEventListener('keydown', function(e) {
+    if ((e.ctrlKey || e.metaKey) && e.key === '/') { e.preventDefault(); toggleChat(); }
+    if ((e.ctrlKey || e.metaKey) && e.key === 'k') { e.preventDefault(); document.getElementById('searchInput').focus(); }
+    if (e.key === 'Escape') {
+        if (chatOpen) toggleChat();
+        document.getElementById('searchResult').style.display = 'none';
+        closeSettings(); closeSellModal();
+    }
+});
+
+// ============================================================
+// TODAY'S ACTIONS
+// ============================================================
+function selectStrategy(strategy, btn) { currentStrategy = strategy; document.querySelectorAll('.strategy-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); }
+
+async function loadTodaysActions() {
+    const investment = document.getElementById('actionInvestment').value || 1000;
+    const el = document.getElementById('actionsContent');
+    el.innerHTML = '<div class="loading"><div class="spinner"></div><br>Analyzing 200+ stocks across US & EU markets...</div>';
+    saveSettings();
+    try {
+        const r = await fetch(`/api/todays-actions?investment=${investment}&strategy=${currentStrategy}`);
+        const j = await r.json();
+        if (j.status !== 'ok') throw new Error(j.message);
+        renderActions(j.data); dataLoaded['actions'] = true; ts();
+    } catch(e) { el.innerHTML = `<div class="error-msg">❌ ${e.message}<br><br><button class="btn" onclick="loadTodaysActions()">🔄 Try Again</button></div>`; }
+}
+
+function renderActions(d) {
+    lastActionsData = d; // Cache for mode toggle re-render
+    const el = document.getElementById('actionsContent');
+    const sm = simpleMode;
+    let h = `<div class="sentiment-bar ${d.sentiment.color}"><strong>${d.sentiment.label}</strong> — ${d.sentiment.desc}<span style="margin-left:auto;font-size:0.8rem">${d.strategy_label} · $${d.investment.toLocaleString()}</span></div>`;
+    if (d.actions.length > 0) {
+        h += `<div style="margin-bottom:8px;font-size:0.9rem;color:var(--text-muted)">🟢 <strong style="color:var(--green)">BUY</strong> — Your investment plan:</div>`;
+        d.actions.forEach(a => {
+            const label = scoreToLabel(a.score);
+            const reasonText = sm ? simpleReason(a) : a.reason;
+            h += `<div class="action-card buy">
+                <div class="action-badge buy">BUY</div>
+                <div class="action-info">
+                    <h3><span class="ticker">${a.ticker}</span> — ${a.name} <span class="badge ${a.market==='US'?'badge-blue':'badge-yellow'}" style="font-size:0.6rem">${a.market}</span>
+                    ${sm ? ` <span class="badge ${label.cls === 'positive' ? 'badge-green' : 'badge-yellow'}" style="font-size:0.65rem">${label.text}</span>` : ''}
+                    </h3>
+                    <div class="meta">
+                        <span>${a.hold_label}</span>
+                        <span>${urgencyBadge(a.urgency)}</span>
+                        <span>$${a.price}/share</span>
+                        ${!sm ? `<span style="color:var(--text-muted)">Score: ${a.score} · RSI: ${a.rsi}</span>` : ''}
+                    </div>
+                    <div class="reason">💡 ${reasonText}</div>
+                </div>
+                <div class="action-numbers">
+                    <div class="invest-amt">$${a.invest_amount.toLocaleString()}</div>
+                    <div class="shares">${a.shares.toFixed(4)} shares</div>
+                    ${!sm ? `<div class="targets"><span class="target-up">🎯 $${a.target_price} (+${a.potential_gain_pct}%)</span><span class="target-down">🛑 $${a.stop_loss} (${a.potential_loss_pct}%)</span></div>` : `<div style="font-size:0.8rem;color:var(--green);margin-top:4px">Potential: +${a.potential_gain_pct}%</div>`}
+                </div>
+            </div>`;
+        });
+    } else { h += '<div style="padding:20px;text-align:center;color:var(--text-muted)">No strong buy signals right now. Consider holding cash or check the Portfolios tab.</div>'; }
+    if (d.sell_alerts.length > 0) {
+        h += `<div style="margin:20px 0 8px;font-size:0.9rem;color:var(--text-muted)">🔴 <strong style="color:var(--red)">SELL / AVOID</strong> — Stay away from these:</div>`;
+        d.sell_alerts.forEach(s => {
+            const cls = s.action==='SELL'?'sell':'avoid';
+            h += `<div class="action-card ${cls}">
+                <div class="action-badge ${cls}">${s.action}</div>
+                <div class="action-info">
+                    <h3><span class="ticker">${s.ticker}</span> — ${s.name}</h3>
+                    <div class="meta">
+                        <span>${urgencyBadge(s.urgency)}</span>
+                        <span class="${cc(s.pct_1w)}">Week: ${fc(s.pct_1w)}</span>
+                        ${!sm ? `<span class="${cc(s.pct_1m)}">Month: ${fc(s.pct_1m)}</span>` : ''}
+                    </div>
+                    <div class="reason">⚠️ ${s.reason}</div>
+                </div>
+                <div class="action-numbers"><div style="font-size:1rem;color:var(--text-muted)">$${s.price}</div></div>
+            </div>`;
+        });
+    }
+    if (d.cash_remaining > 0.01) h += `<div style="padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:10px;font-size:0.85rem;color:var(--text-muted);margin-top:12px">💵 Cash remaining: <strong style="color:var(--text)">$${d.cash_remaining.toLocaleString()}</strong></div>`;
+    el.innerHTML = h;
+}
+
+// ============================================================
+// MY PORTFOLIO
+// ============================================================
+let myPortfolio = []; let myTradeHistory = [];
+try { const s = localStorage.getItem('myPortfolio'); if (s) myPortfolio = JSON.parse(s); } catch(e) {}
+try { const s = localStorage.getItem('myTradeHistory'); if (s) myTradeHistory = JSON.parse(s); } catch(e) {}
+function savePortfolio() { localStorage.setItem('myPortfolio', JSON.stringify(myPortfolio)); localStorage.setItem('myTradeHistory', JSON.stringify(myTradeHistory)); }
+
+function addHolding() {
+    const ticker = (document.getElementById('addTicker').value||'').toUpperCase().trim();
+    const shares = parseFloat(document.getElementById('addShares').value);
+    const buyPrice = parseFloat(document.getElementById('addBuyPrice').value);
+    const buyDate = document.getElementById('addBuyDate').value || '';
+    if (!ticker) { alert('Enter a ticker'); return; } if (!shares||shares<=0) { alert('Enter shares'); return; } if (!buyPrice||buyPrice<=0) { alert('Enter buy price'); return; }
+    myPortfolio.push({ ticker, shares, buy_price: buyPrice, buy_date: buyDate });
+    savePortfolio(); renderPortfolioList(); showToast(`Added ${shares} shares of ${ticker}`, 'success');
+    document.getElementById('addTicker').value=''; document.getElementById('addShares').value=''; document.getElementById('addBuyPrice').value=''; document.getElementById('addBuyDate').value='';
+}
+function removeHolding(i) { if (!confirm(`Remove ${myPortfolio[i].ticker}?`)) return; myPortfolio.splice(i,1); savePortfolio(); renderPortfolioList(); document.getElementById('holdingsContent').innerHTML=''; }
+
+// Sell Modal
+function openSellModal(i) { sellTargetIndex=i; const h=myPortfolio[i]; document.getElementById('sellModalInfo').textContent=`Selling ${h.ticker} — ${h.shares} shares at $${h.buy_price.toFixed(2)}`; document.getElementById('sellShares').value=h.shares; document.getElementById('sellPrice').value=''; document.getElementById('sellDate').value=new Date().toISOString().split('T')[0]; document.getElementById('sellModal').style.display='flex'; }
+function closeSellModal() { document.getElementById('sellModal').style.display='none'; sellTargetIndex=-1; }
+document.getElementById('sellModal').addEventListener('click', function(e) { if (e.target===this) closeSellModal(); });
+
+function confirmSell() {
+    if (sellTargetIndex<0) return; const h=myPortfolio[sellTargetIndex];
+    const ss=parseFloat(document.getElementById('sellShares').value), sp=parseFloat(document.getElementById('sellPrice').value), sd=document.getElementById('sellDate').value||'';
+    if (!ss||ss<=0) { alert('Enter shares'); return; } if (ss>h.shares) { alert(`Only ${h.shares} shares`); return; } if (!sp||sp<=0) { alert('Enter sell price'); return; }
+    myTradeHistory.push({ticker:h.ticker,shares:ss,buy_price:h.buy_price,buy_date:h.buy_date,sell_price:sp,sell_date:sd});
+    const rem=h.shares-ss; if (rem<=0.0001) myPortfolio.splice(sellTargetIndex,1); else myPortfolio[sellTargetIndex].shares=parseFloat(rem.toFixed(4));
+    savePortfolio(); closeSellModal(); renderPortfolioList(); renderTradeHistory(); document.getElementById('holdingsContent').innerHTML='';
+    const pnl=(sp-h.buy_price)*ss; showToast(`Sold ${ss} ${h.ticker} (${pnl>=0?'+':''}$${pnl.toFixed(2)})`, pnl>=0?'success':'error');
+}
+
+function renderPortfolioList() {
+    const el=document.getElementById('portfolioHoldings');
+    if (!myPortfolio.length) { el.innerHTML='<div style="text-align:center;padding:20px;color:var(--text-muted)">No holdings yet. Add your first stock above! 👆</div>'; renderTradeHistory(); return; }
+    let h=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><span style="font-size:0.9rem;font-weight:600">${myPortfolio.length} holding(s)</span><button class="btn btn-primary" onclick="analyzePortfolio()">🔍 Analyze</button></div>`;
+    h+='<div class="table-wrap"><table><thead><tr><th>Ticker</th><th>Shares</th><th>Buy Price</th><th>Date</th><th>Cost</th><th>Actions</th></tr></thead><tbody>';
+    myPortfolio.forEach((p,i) => { h+=`<tr><td><strong style="color:var(--accent)">${p.ticker}</strong></td><td>${p.shares}</td><td>$${p.buy_price.toFixed(2)}</td><td>${p.buy_date||'—'}</td><td>$${(p.shares*p.buy_price).toFixed(2)}</td><td><button class="btn btn-sell" onclick="openSellModal(${i})">💰 Sell</button> <button class="btn btn-danger" onclick="removeHolding(${i})">✕</button></td></tr>`; });
+    h+='</tbody></table></div>'; el.innerHTML=h; renderTradeHistory();
+}
+
+function renderTradeHistory() {
+    const el=document.getElementById('tradeHistorySection');
+    if (!myTradeHistory.length) { el.innerHTML=''; return; }
+    let h=`<h3 style="margin-bottom:12px">📜 Trade History</h3>`;
+    let tp=0,tl=0,w=0,l=0;
+    const trades=myTradeHistory.map(t=>{const pnl=(t.sell_price-t.buy_price)*t.shares,pp=((t.sell_price-t.buy_price)/t.buy_price)*100;let dh=null;if(t.buy_date&&t.sell_date)dh=Math.round((new Date(t.sell_date)-new Date(t.buy_date))/(864e5));if(pnl>=0){w++;tp+=pnl}else{l++;tl+=pnl}return{...t,pnl,pnlPct:pp,daysHeld:dh}});
+    const tot=w+l,wr=tot>0?((w/tot)*100).toFixed(1):0,net=tp+tl;
+    h+=`<div class="trade-stats-grid"><div class="trade-stat"><div class="label">Trades</div><div class="value">${tot}</div></div><div class="trade-stat"><div class="label">Win Rate</div><div class="value ${parseFloat(wr)>=50?'positive':'negative'}">${wr}%</div></div><div class="trade-stat"><div class="label">Wins</div><div class="value positive">${w}</div></div><div class="trade-stat"><div class="label">Losses</div><div class="value negative">${l}</div></div><div class="trade-stat" style="border-color:${net>=0?'var(--green)':'var(--red)'}"><div class="label">Net P&L</div><div class="value ${net>=0?'positive':'negative'}">${net>=0?'+':''}$${net.toFixed(2)}</div></div></div>`;
+    h+='<div class="table-wrap"><table><thead><tr><th>Ticker</th><th>Shares</th><th>Buy</th><th>Sell</th><th>P&L</th><th>%</th><th>Days</th><th></th></tr></thead><tbody>';
+    trades.slice().reverse().forEach((t,ri)=>{const i=trades.length-1-ri;const pc=t.pnl>=0?'positive':'negative';const ps=t.pnl>=0?'+':'';h+=`<tr><td><strong>${t.ticker}</strong></td><td>${t.shares}</td><td>$${t.buy_price.toFixed(2)}</td><td>$${t.sell_price.toFixed(2)}</td><td class="${pc}" style="font-weight:700">${ps}$${Math.abs(t.pnl).toFixed(2)}</td><td class="${pc}">${ps}${t.pnlPct.toFixed(1)}%</td><td>${t.daysHeld!=null?t.daysHeld+'d':'?'}</td><td><button class="btn btn-danger" onclick="removeTrade(${i})">✕</button></td></tr>`;});
+    h+='</tbody></table></div><div style="margin-top:8px;text-align:right"><button class="btn btn-danger" onclick="clearTradeHistory()" style="font-size:0.8rem">🗑️ Clear History</button></div>';
+    el.innerHTML=h;
+}
+function removeTrade(i) { if (!confirm('Remove trade?')) return; myTradeHistory.splice(i,1); savePortfolio(); renderTradeHistory(); }
+function clearTradeHistory() { if (!confirm('Clear ALL history?')) return; myTradeHistory=[]; savePortfolio(); renderTradeHistory(); showToast('History cleared','info'); }
+
+async function analyzePortfolio() {
+    const el=document.getElementById('holdingsContent');
+    if (!myPortfolio.length) { el.innerHTML='<div class="error-msg">Add holdings first!</div>'; return; }
+    el.innerHTML='<div class="loading"><div class="spinner"></div><br>Analyzing...</div>';
+    try {
+        const r=await fetch('/api/analyze-portfolio',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({holdings:myPortfolio,trade_history:myTradeHistory})});
+        const j=await r.json(); if (j.status!=='ok') throw new Error(j.message);
+        renderPortfolioAnalysis(j.data);
+    } catch(e) { el.innerHTML=`<div class="error-msg">❌ ${e.message}<br><button class="btn" onclick="analyzePortfolio()">🔄 Retry</button></div>`; }
+}
+
+function renderPortfolioAnalysis(d) {
+    const el=document.getElementById('holdingsContent'); let h='';
+    const sc=d.total_pnl>=0?'green':'red';
+    h+=`<div class="sentiment-bar ${sc}" style="margin-top:20px">${d.summary}<span style="margin-left:auto;font-size:0.85rem">$${d.total_invested.toLocaleString()} → $${d.total_current_value.toLocaleString()}</span></div>`;
+    if (d.counts) h+=`<div style="display:flex;gap:12px;margin-bottom:16px"><span class="badge badge-green">🟢 ${d.counts.green}</span><span class="badge badge-yellow">🟡 ${d.counts.yellow}</span><span class="badge badge-red">🔴 ${d.counts.red}</span></div>`;
+    if (d.trade_stats) { const ts=d.trade_stats; h+=`<div style="margin-bottom:16px"><div style="font-size:0.9rem;font-weight:600;margin-bottom:8px">📊 Trading Insights</div>`; if(ts.insights)ts.insights.forEach(i=>{h+=`<div class="insight-card">${i}</div>`;}); if(ts.best_trade)h+=`<div style="display:flex;gap:12px;margin-top:8px;font-size:0.8rem;color:var(--text-muted)"><span>🏆 Best: <strong class="positive">${ts.best_trade.ticker} +${ts.best_trade.pnl_pct}%</strong></span><span>💀 Worst: <strong class="negative">${ts.worst_trade.ticker} ${ts.worst_trade.pnl_pct}%</strong></span></div>`; h+=`</div>`; }
+    d.holdings.forEach(h2=>{const pc=(h2.pnl||0)>=0?'positive':'negative';const ps=(h2.pnl||0)>=0?'+':'';h+=`<div class="holding-card" style="border-left:4px solid var(--${h2.status==='green'?'green':h2.status==='red'?'red':h2.status==='yellow'?'yellow':'border'})"><div class="status-dot ${h2.status}"></div><div class="info"><h4><strong style="color:var(--accent)">${h2.ticker}</strong> — ${h2.name} <span style="font-size:0.75rem;color:var(--text-muted)">${h2.status_label}</span>${h2.days_held!=null?` <span style="font-size:0.7rem;color:var(--text-muted)">📅 ${h2.days_label}</span>`:''}</h4><div class="advice">💡 ${h2.advice}</div><div style="font-size:0.75rem;color:var(--text-muted);margin-top:4px">${h2.shares} shares · $${h2.buy_price} → $${h2.current_price||'?'}</div></div><div class="price-info" style="min-width:140px">${h2.pnl!=null?`<div class="${pc}" style="font-size:1.2rem;font-weight:700">${ps}$${Math.abs(h2.pnl).toLocaleString()}</div><div class="${pc}" style="font-size:0.85rem">${ps}${h2.pnl_pct}%</div>`:'<div style="color:var(--text-muted)">No data</div>'}</div></div>`;});
+    el.innerHTML=h;
+}
+renderPortfolioList();
+
+// Export/Import/Sync
+function exportPortfolio() { const d={holdings:myPortfolio,trade_history:myTradeHistory,exported_at:new Date().toISOString()}; const b=new Blob([JSON.stringify(d,null,2)],{type:'application/json'}); const u=URL.createObjectURL(b); const a=document.createElement('a'); a.href=u; a.download=`portfolio_${new Date().toISOString().split('T')[0]}.json`; a.click(); URL.revokeObjectURL(u); showToast('Exported!','success'); }
+function importPortfolio(event) { const f=event.target.files[0]; if(!f)return; const r=new FileReader(); r.onload=function(e){try{const d=JSON.parse(e.target.result);if(d.holdings&&Array.isArray(d.holdings)){if(!confirm(`Import ${d.holdings.length} holdings?`))return;myPortfolio=d.holdings;myTradeHistory=d.trade_history||[];savePortfolio();renderPortfolioList();document.getElementById('holdingsContent').innerHTML='';showToast('Imported!','success');}else alert('Invalid file');}catch(err){alert('Error: '+err.message);}}; r.readAsText(f); event.target.value=''; }
+async function syncToServer() { try{const r=await fetch('/api/portfolio-data',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({holdings:myPortfolio,trade_history:myTradeHistory})});const j=await r.json();if(j.status==='ok')showToast('Saved to server!','success');else throw new Error(j.message);}catch(e){showToast('Failed: '+e.message,'error');} }
+async function syncFromServer() { try{const r=await fetch('/api/portfolio-data');const j=await r.json();if(j.status==='ok'&&j.data){const d=j.data;if(!d.holdings?.length&&!d.trade_history?.length){showToast('No data on server','info');return;}if(!confirm(`Load ${d.holdings?.length||0} holdings?`))return;myPortfolio=d.holdings||[];myTradeHistory=d.trade_history||[];savePortfolio();renderPortfolioList();document.getElementById('holdingsContent').innerHTML='';showToast('Loaded!','success');}else throw new Error(j.message||'No data');}catch(e){showToast('Failed: '+e.message,'error');} }
+
+// ============================================================
+// GOAL / COMPOUND / PORTFOLIO / MARKET / COMMODITIES
+// ============================================================
+async function calcGoal() { const g=document.getElementById('goalAmount').value||200,m=document.getElementById('goalMonths').value||1,el=document.getElementById('goalResult'); el.innerHTML='<div class="loading"><div class="spinner"></div><br>Scanning 200+ stocks...</div>'; try{const r=await fetch(`/api/goal?goal=${g}&months=${m}`);const j=await r.json();if(j.status!=='ok')throw new Error(j.message);renderGoal(j.data);}catch(e){el.innerHTML=`<div class="error-msg">❌ ${e.message}<br><button class="btn" onclick="calcGoal()">🔄 Retry</button></div>`;} }
+function renderGoal(d) { const el=document.getElementById('goalResult'),picks=d.picks; if(!picks?.length){el.innerHTML='<div class="error-msg">No stocks found.</div>';return;} let h=`<div style="padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:10px;font-size:0.9rem;margin:16px 0">🎯 To make <strong style="color:var(--green)">$${parseFloat(d.target_profit).toLocaleString()}</strong> in <strong>${d.months} month(s)</strong>:</div>`; const top3=picks.slice(0,3),ranks=['🥇 Best','🥈 Second','🥉 Third']; h+='<div class="grid-3">'; top3.forEach((p,i)=>{const fb=p.feasibility_color==='green'?'badge-green':p.feasibility_color==='red'?'badge-red':'badge-yellow';h+=`<div class="goal-card" ${i===0?'style="border-color:var(--accent)"':''}><div class="rank">${ranks[i]}</div><div class="ticker-name"><span class="ticker">${p.ticker}</span> ${p.is_etf?'<span class="badge badge-blue" style="font-size:0.6rem">ETF</span>':''}</div><div style="color:var(--text-muted);font-size:0.85rem">${p.name}</div><div class="invest-big">$${p.investment_needed.toLocaleString()}</div><div style="font-size:0.8rem;color:var(--text-muted)">at $${p.price}/share</div><div class="scenarios"><div class="scenario"><div class="positive">🟢 +$${p.optimistic_profit.toLocaleString()}</div><div style="color:var(--text-muted)">Best</div></div><div class="scenario"><div style="color:var(--blue)">🔵 +$${p.expected_profit.toLocaleString()}</div><div style="color:var(--text-muted)">Expected</div></div><div class="scenario"><div class="${p.pessimistic_profit>=0?'positive':'negative'}">🔴 ${p.pessimistic_profit>=0?'+':''}$${p.pessimistic_profit.toLocaleString()}</div><div style="color:var(--text-muted)">Worst</div></div></div><div style="margin-top:12px"><span class="badge ${fb}">${p.feasibility}</span></div></div>`;}); h+='</div>'; if(picks.length>3){h+=`<details style="margin-top:16px"><summary style="cursor:pointer;color:var(--accent);font-size:0.9rem">📋 ${picks.length-3} more...</summary><div class="table-wrap" style="margin-top:12px"><table><thead><tr><th>#</th><th>Stock</th><th>Price</th><th>Invest</th><th>Expected</th><th>Feasibility</th></tr></thead><tbody>`;picks.slice(3).forEach((p,i)=>{const fb=p.feasibility_color==='green'?'badge-green':'badge-yellow';h+=`<tr><td>${i+4}</td><td><strong>${p.ticker}</strong><br><span style="font-size:0.7rem;color:var(--text-muted)">${p.name}</span></td><td>$${p.price}</td><td style="font-weight:700;color:var(--accent)">$${p.investment_needed.toLocaleString()}</td><td style="color:var(--blue)">+$${p.expected_profit}</td><td><span class="badge ${fb}">${p.feasibility}</span></td></tr>`;});h+='</tbody></table></div></details>';} el.innerHTML=h; }
+
+async function calcCompound() { const i=document.getElementById('compInitial').value||1000,m=document.getElementById('compMonthly').value||200,mo=document.getElementById('compMonths').value||24,rt=document.getElementById('compReturn').value||10,el=document.getElementById('compoundResult'); try{const r=await fetch(`/api/compound?initial=${i}&monthly=${m}&months=${mo}&return=${rt}`);const j=await r.json();if(j.status!=='ok')throw new Error(j.message);const d=j.data,e=d.expected,o=d.optimistic,p=d.pessimistic;el.innerHTML=`<div class="sim-stats" style="margin-top:16px"><div class="sim-stat"><div class="label">Invested</div><div class="value">$${e.total_invested.toLocaleString()}</div></div><div class="sim-stat" style="border-color:var(--green)"><div class="label">🟢 Optimistic</div><div class="value positive">$${o.final_value.toLocaleString()}</div></div><div class="sim-stat" style="border-color:var(--blue)"><div class="label">🔵 Expected</div><div class="value">$${e.final_value.toLocaleString()}</div></div><div class="sim-stat" style="border-color:var(--red)"><div class="label">🔴 Pessimistic</div><div class="value">$${p.final_value.toLocaleString()}</div></div></div>`;}catch(err){el.innerHTML=`<div class="error-msg">${err.message}</div>`;} }
+
+function selectProfile(profile, el) { currentProfile=profile; document.querySelectorAll('.profile-card').forEach(c=>c.classList.remove('active')); el.classList.add('active'); saveSettings(); }
+async function loadPortfolio() { const a=document.getElementById('investmentAmount').value||10000,m=document.getElementById('timeframeMonths').value||12,c=document.getElementById('portfolioContent'); c.innerHTML='<div class="loading"><div class="spinner"></div><br>Building portfolio...</div>'; try{const r=await fetch(`/api/portfolio?profile=${currentProfile}&investment=${a}&months=${m}&tickers=0`);const j=await r.json();if(j.status!=='ok')throw new Error(j.message);renderPortfolio(j.data);dataLoaded['portfolios']=true;ts();}catch(e){c.innerHTML=`<div class="error-msg">${e.message}</div>`;} }
+function renderPortfolio(d) { const c=document.getElementById('portfolioContent'); let h=`<div style="margin-bottom:20px"><h3>${d.name}</h3><p style="color:var(--text-muted);font-size:0.9rem">${d.description}</p><div style="display:flex;gap:12px;margin-top:8px;flex-wrap:wrap"><span class="badge badge-blue">Risk: ${d.risk_level}</span><span class="badge badge-green">Target: ${d.target_return}</span><span class="badge badge-yellow">Rebalance: ${d.rebalance}</span></div></div>`; if(d.simulation){const s=d.simulation;h+=`<div style="margin-bottom:12px"><strong>📈 ${d.timeframe_label||'1y'} Projection</strong></div><div class="sim-stats"><div class="sim-stat"><div class="label">Invested</div><div class="value">$${d.investment.toLocaleString()}</div></div><div class="sim-stat" style="border-color:var(--green)"><div class="label">🟢 Optimistic</div><div class="value positive">$${s.optimistic_value.toLocaleString()}</div></div><div class="sim-stat" style="border-color:var(--blue)"><div class="label">🔵 Expected</div><div class="value">$${s.end_value.toLocaleString()}</div></div><div class="sim-stat" style="border-color:var(--red)"><div class="label">🔴 Pessimistic</div><div class="value">$${s.pessimistic_value.toLocaleString()}</div></div></div>`;} h+='<div style="margin:16px 0"><strong>Allocation:</strong></div><div class="alloc-bar">'; d.buy_list.forEach((b,i)=>{h+=`<div class="alloc-segment" style="width:${b.target_pct}%;background:${COLORS[i%COLORS.length]}">${b.target_pct>5?b.target_pct+'%':''}</div>`;}); h+='</div><div class="alloc-legend">'; d.buy_list.forEach((b,i)=>{h+=`<div class="alloc-legend-item"><div class="alloc-dot" style="background:${COLORS[i%COLORS.length]}"></div>${b.ticker} (${b.target_pct}%)</div>`;}); h+=`</div><div style="margin-top:24px"><h3>🛒 Buy List:</h3></div><div class="table-wrap"><table><thead><tr><th>Ticker</th><th>Name</th><th>%</th><th>Price</th><th>Shares</th><th>Cost</th><th>Why</th></tr></thead><tbody>`; d.buy_list.forEach(b=>{h+=`<tr><td><strong>${b.ticker}</strong></td><td>${b.name}</td><td>${b.target_pct}%</td><td>${b.price?'$'+b.price:'N/A'}</td><td style="font-weight:700;color:var(--accent)">${b.shares_to_buy.toFixed(4)}</td><td>$${b.cost.toLocaleString()}</td><td style="font-size:0.8rem;color:var(--text-muted)">${b.why}</td></tr>`;}); h+=`</tbody></table></div><div style="margin-top:16px;padding:16px;background:var(--bg);border:1px solid var(--border);border-radius:10px"><strong>Total:</strong> $${d.total_allocated.toLocaleString()} | <strong>Cash:</strong> $${d.cash_remaining.toLocaleString()}</div>`; c.innerHTML=h; }
+
+async function loadMarketData() { try{const[mr,mv]=await Promise.all([fetch('/api/market-overview'),fetch('/api/top-movers?market=all')]);const mkt=await mr.json(),mov=await mv.json();if(mkt.status==='ok'){renderIndices('usIndices',mkt.data.us);renderIndices('euIndices',mkt.data.eu);}if(mov.status==='ok'){renderMovers('gainersTable',mov.data.gainers);renderMovers('losersTable',mov.data.losers);}dataLoaded['market']=true;ts();}catch(e){document.getElementById('usIndices').innerHTML=`<div class="error-msg">${e.message}</div>`;} }
+function renderIndices(id,indices) { const el=document.getElementById(id); if(!indices?.length){el.innerHTML='<div class="error-msg">No data</div>';return;} el.innerHTML=indices.map(i=>`<div class="index-card"><div class="name">${i.name}</div><div class="price">${i.price.toLocaleString()}</div><div class="change ${cc(i.change)}">${ci(i.change)} ${fc(i.change)}</div></div>`).join(''); }
+function renderMovers(id,movers) { const el=document.getElementById(id); if(!movers?.length){el.innerHTML='<div class="error-msg">No data</div>';return;} let h='<table><thead><tr><th>#</th><th>Stock</th><th>Price</th><th>Change</th></tr></thead><tbody>'; movers.forEach((m,i)=>{h+=`<tr><td>${i+1}</td><td><strong>${m.ticker}</strong><br><span style="font-size:0.7rem;color:var(--text-muted)">${m.name}</span></td><td>$${m.price.toLocaleString()}</td><td class="${cc(m.change)}" style="font-weight:700">${ci(m.change)} ${fc(m.change)}</td></tr>`;}); el.innerHTML=h+'</tbody></table>'; }
+
+async function loadCommodities() { const el=document.getElementById('commoditiesContent'); el.innerHTML='<div class="loading"><div class="spinner"></div><br>Loading...</div>'; try{const r=await fetch('/api/commodities');const j=await r.json();if(j.status!=='ok')throw new Error(j.message);renderCommodities(j.data);dataLoaded['commodities']=true;ts();}catch(e){el.innerHTML=`<div class="error-msg">❌ ${e.message}<br><button class="btn" onclick="loadCommodities()">🔄 Retry</button></div>`;} }
+function renderCommodities(commodities) { const el=document.getElementById('commoditiesContent'); if(!commodities?.length){el.innerHTML='<div class="error-msg">No data</div>';return;} let h='<div class="commodity-grid">'; commodities.forEach(c=>{const icon=COMMODITY_ICONS[c.name]||'📦';h+=`<div class="commodity-card"><div class="commodity-ticker">${c.ticker}</div><div class="commodity-icon">${icon}</div><div class="commodity-name">${c.name}</div><div class="commodity-price">$${c.price.toLocaleString()}</div><div class="commodity-change ${cc(c.change)}">${ci(c.change)} ${fc(c.change)}</div>${c.pct_1w!=null?`<div class="commodity-week">Week: <span class="${cc(c.pct_1w)}">${fc(c.pct_1w)}</span></div>`:''}</div>`;}); h+=`</div><div style="margin-top:20px;padding:16px;background:var(--bg);border:1px solid var(--border);border-radius:10px"><div style="font-size:0.9rem;font-weight:600;margin-bottom:8px">💡 Commodity ETFs:</div><div style="font-size:0.85rem;color:var(--text-muted)"><strong style="color:var(--accent)">GLD</strong> Gold · <strong style="color:var(--accent)">SLV</strong> Silver · <strong style="color:var(--accent)">USO</strong> Oil · <strong style="color:var(--accent)">PPLT</strong> Platinum · <strong style="color:var(--accent)">UNG</strong> Gas · <strong style="color:var(--accent)">DBC</strong> Broad</div></div>`; el.innerHTML=h; }
+
+async function refreshAll() { await fetch('/api/clear-cache',{method:'POST'}); Object.keys(dataLoaded).forEach(k=>dataLoaded[k]=false); const active=document.querySelector('.tab.active'); if(active)loadTabData(active.dataset.tab); showToast('Refreshing...','info'); }
+
+// Init
+document.querySelectorAll('.strategy-btn').forEach(b=>{if(b.dataset.strategy===currentStrategy){document.querySelectorAll('.strategy-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');}});
+document.querySelectorAll('.profile-card').forEach(c=>{if(c.textContent.toLowerCase().includes(currentProfile)){document.querySelectorAll('.profile-card').forEach(x=>x.classList.remove('active'));c.classList.add('active');}});
+// Hide beginner tips if user dismissed them
+if (localStorage.getItem('hideTips') === '1') {
+    const tips = document.getElementById('beginnerTips');
+    if (tips) tips.style.display = 'none';
+}
+
+loadTodaysActions();
