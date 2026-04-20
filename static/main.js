@@ -571,19 +571,60 @@ function clearTradeHistory() { if (!confirm('Clear ALL history?')) return; myTra
 async function analyzePortfolio() {
     const el=document.getElementById('holdingsContent');
     if (!myPortfolio.length) { el.innerHTML='<div class="error-msg">Add holdings first!</div>'; return; }
-    el.innerHTML='<div class="loading"><div class="spinner"></div><br>Analyzing...</div>';
+    el.innerHTML='<div class="loading"><div class="spinner"></div><br>Analyzing portfolio + fetching news & earnings...</div>';
     try {
-        const r=await fetch('/api/analyze-portfolio',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({holdings:myPortfolio,trade_history:myTradeHistory})});
-        const j=await r.json(); if (j.status!=='ok') throw new Error(j.message);
-        renderPortfolioAnalysis(j.data);
+        // Fetch portfolio analysis AND intelligence (news + earnings) in parallel
+        const [analysisRes, intelRes] = await Promise.all([
+            fetch('/api/analyze-portfolio',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({holdings:myPortfolio,trade_history:myTradeHistory})}),
+            fetch('/api/intelligence',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({holdings:myPortfolio,trade_history:myTradeHistory})}).catch(()=>null)
+        ]);
+        const j=await analysisRes.json(); if (j.status!=='ok') throw new Error(j.message);
+
+        // Add intelligence data if available
+        let intel = null;
+        if (intelRes) { try { const ij = await intelRes.json(); if (ij.status === 'ok') intel = ij.data; } catch(e) {} }
+
+        renderPortfolioAnalysis(j.data, intel);
     } catch(e) { el.innerHTML=`<div class="error-msg">❌ ${e.message}<br><button class="btn" onclick="analyzePortfolio()">🔄 Retry</button></div>`; }
 }
 
-function renderPortfolioAnalysis(d) {
+function renderPortfolioAnalysis(d, intel) {
     const el=document.getElementById('holdingsContent'); let h='';
     const sc=d.total_pnl>=0?'green':'red';
     h+=`<div class="sentiment-bar ${sc}" style="margin-top:20px">${d.summary}<span style="margin-left:auto;font-size:0.85rem">$${d.total_invested.toLocaleString()} → $${d.total_current_value.toLocaleString()}</span></div>`;
     if (d.counts) h+=`<div style="display:flex;gap:12px;margin-bottom:16px"><span class="badge badge-green">🟢 ${d.counts.green}</span><span class="badge badge-yellow">🟡 ${d.counts.yellow}</span><span class="badge badge-red">🔴 ${d.counts.red}</span></div>`;
+
+    // Earnings warnings
+    if (intel && intel.earnings_warnings && intel.earnings_warnings.length > 0) {
+        h += `<div style="margin-bottom:16px">`;
+        intel.earnings_warnings.forEach(w => {
+            h += `<div style="padding:10px 16px;background:var(--yellow-bg);border:1px solid rgba(255,214,0,0.3);border-radius:8px;margin-bottom:6px;font-size:0.85rem;color:var(--yellow)">${w.warning}</div>`;
+        });
+        h += `</div>`;
+    }
+
+    // News headlines
+    if (intel && intel.news && Object.keys(intel.news).length > 0) {
+        h += `<div style="margin-bottom:16px"><div style="font-size:0.9rem;font-weight:600;margin-bottom:8px">📰 Latest News</div>`;
+        for (const [ticker, headlines] of Object.entries(intel.news)) {
+            headlines.forEach(n => {
+                h += `<div style="padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;margin-bottom:4px;font-size:0.8rem">
+                    <strong style="color:var(--accent)">${ticker}</strong> — ${n.title}
+                    <span style="color:var(--text-muted);margin-left:8px">${n.publisher} · ${n.date}</span>
+                </div>`;
+            });
+        }
+        h += `</div>`;
+    }
+
+    // Market regime in portfolio view
+    if (intel && intel.market_regime && intel.market_regime.regime !== 'unknown') {
+        const mr = intel.market_regime;
+        const regimeColors = {bull:'green',bear:'red',correction:'yellow',sideways:'yellow'};
+        h += `<div class="sentiment-bar ${regimeColors[mr.regime]||'yellow'}" style="margin-bottom:16px;font-size:0.85rem">
+            <strong>🌍 Market: ${mr.regime.toUpperCase()}</strong> — ${mr.strategy_hint}
+        </div>`;
+    }
     if (d.trade_stats) { const ts=d.trade_stats; h+=`<div style="margin-bottom:16px"><div style="font-size:0.9rem;font-weight:600;margin-bottom:8px">📊 Trading Insights</div>`; if(ts.insights)ts.insights.forEach(i=>{h+=`<div class="insight-card">${i}</div>`;}); if(ts.best_trade)h+=`<div style="display:flex;gap:12px;margin-top:8px;font-size:0.8rem;color:var(--text-muted)"><span>🏆 Best: <strong class="positive">${ts.best_trade.ticker} +${ts.best_trade.pnl_pct}%</strong></span><span>💀 Worst: <strong class="negative">${ts.worst_trade.ticker} ${ts.worst_trade.pnl_pct}%</strong></span></div>`; h+=`</div>`; }
     d.holdings.forEach(h2=>{const pc=(h2.pnl||0)>=0?'positive':'negative';const ps=(h2.pnl||0)>=0?'+':'';h+=`<div class="holding-card" style="border-left:4px solid var(--${h2.status==='green'?'green':h2.status==='red'?'red':h2.status==='yellow'?'yellow':'border'})"><div class="status-dot ${h2.status}"></div><div class="info"><h4><strong style="color:var(--accent)">${h2.ticker}</strong> — ${h2.name} <span style="font-size:0.75rem;color:var(--text-muted)">${h2.status_label}</span>${h2.days_held!=null?` <span style="font-size:0.7rem;color:var(--text-muted)">📅 ${h2.days_label}</span>`:''}</h4><div class="advice">💡 ${h2.advice}</div><div style="font-size:0.75rem;color:var(--text-muted);margin-top:4px">${h2.shares} shares · $${h2.buy_price} → $${h2.current_price||'?'}</div></div><div class="price-info" style="min-width:140px">${h2.pnl!=null?`<div class="${pc}" style="font-size:1.2rem;font-weight:700">${ps}$${Math.abs(h2.pnl).toLocaleString()}</div><div class="${pc}" style="font-size:0.85rem">${ps}${h2.pnl_pct}%</div>`:'<div style="color:var(--text-muted)">No data</div>'}</div></div>`;});
     el.innerHTML=h;
