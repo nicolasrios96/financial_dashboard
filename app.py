@@ -497,6 +497,22 @@ def api_market_regime():
 # AI-Enhanced Analysis Endpoints
 # ---------------------------------------------------------------------------
 
+@app.route("/api/autocomplete")
+def api_autocomplete():
+    """Search stock names and tickers for autocomplete suggestions."""
+    from analysis import STOCK_NAMES
+    q = request.args.get("q", "").strip().upper()
+    if len(q) < 1:
+        return safe_jsonify({"status": "ok", "results": []})
+    results = []
+    for ticker, name in STOCK_NAMES.items():
+        if q in ticker.upper() or q in name.upper():
+            results.append({"ticker": ticker, "name": name})
+            if len(results) >= 10:
+                break
+    return safe_jsonify({"status": "ok", "results": results})
+
+
 @app.route("/api/ai-status")
 def api_ai_status():
     """Check if server-side AI analysis is available."""

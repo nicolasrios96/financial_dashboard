@@ -1599,3 +1599,49 @@ renderActions = function(d) {
     }
     el.innerHTML += mobileHtml;
 };
+
+
+
+// ============================================================
+// AUTOCOMPLETE — Search by ticker OR name
+// ============================================================
+var acTimeout = null;
+var searchInputEl = document.getElementById('searchInput');
+searchInputEl.removeEventListener('input', searchInputEl._oldHandler || function(){});
+
+searchInputEl.addEventListener('input', function() {
+    clearTimeout(searchTimeout);
+    clearTimeout(acTimeout);
+    var val = this.value.trim();
+    if (val.length < 1) { document.getElementById('searchResult').style.display = 'none'; return; }
+    // Show autocomplete suggestions first (instant, from our database)
+    acTimeout = setTimeout(function() { fetchAutocomplete(val); }, 150);
+    // Also queue the full Yahoo search after a longer delay
+    searchTimeout = setTimeout(function() { searchTicker(val.toUpperCase()); }, 800);
+});
+
+async function fetchAutocomplete(query) {
+    try {
+        var r = await fetch('/api/autocomplete?q=' + encodeURIComponent(query));
+        var j = await r.json();
+        if (j.status !== 'ok' || !j.results || j.results.length === 0) return;
+        var el = document.getElementById('searchResult');
+        el.style.display = 'block';
+        var h = '<div style="font-size:0.65rem;color:var(--text-tertiary);margin-bottom:6px;padding:0 4px">Suggestions (tap to search):</div>';
+        j.results.forEach(function(item) {
+            h += '<div class="ac-item" onclick="selectAutocomplete(\'' + item.ticker + '\')" style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border-radius:6px;cursor:pointer;transition:all 0.15s">';
+            h += '<div><strong style="color:var(--accent);font-size:0.85rem">' + item.ticker + '</strong>';
+            h += ' <span style="color:var(--text-secondary);font-size:0.75rem">' + item.name + '</span></div>';
+            h += '<span style="font-size:0.65rem;color:var(--text-tertiary)">Search</span>';
+            h += '</div>';
+        });
+        el.innerHTML = h;
+    } catch(e) {}
+}
+
+function selectAutocomplete(ticker) {
+    clearTimeout(searchTimeout);
+    clearTimeout(acTimeout);
+    document.getElementById('searchInput').value = ticker;
+    searchTicker(ticker);
+}

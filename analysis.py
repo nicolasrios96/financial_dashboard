@@ -143,7 +143,7 @@ STOCK_NAMES = {
     "VOW3.DE": "Volkswagen AG", "MUV2.DE": "Munich Re", "DBK.DE": "Deutsche Bank",
     "FRE.DE": "Fresenius SE",
     "IFX.DE": "Infineon Technologies", "HEN3.DE": "Henkel AG", "RHM.DE": "Rheinmetall AG",
-    "MTX.DE": "MTU Aero Engines", "SHL.DE": "Siemens Healthineers",
+    "MTX.DE": "MTU Aero Engines", "SHL.DE": "Siemens Healthineers", "PUM.DE": "Puma SE",
     # Spain
     "SAN.MC": "Banco Santander", "IBE.MC": "Iberdrola", "FER.MC": "Ferrovial SE",
     "ITX.MC": "Inditex SA", "TEF.MC": "Telefónica SA",
