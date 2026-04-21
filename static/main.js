@@ -11,8 +11,10 @@ let currentStrategy = 'best';
 let sellTargetIndex = -1;
 let chatOpen = false;
 let searchTimeout = null;
+let aiAvailable = false;
 const COLORS = ['#448aff','#00c853','#ffd600','#ff6d00','#b388ff','#ff1744','#00bcd4','#8bc34a','#e91e63','#9c27b0','#009688','#ff5722'];
 const COMMODITY_ICONS = {'Gold':'🥇','Silver':'🥈','Crude Oil (WTI)':'🛢️','Brent Crude':'🛢️','Natural Gas':'🔥','Copper':'🔶','Platinum':'💎','Palladium':'💎','Corn':'🌽','Wheat':'🌾'};
+const CRYPTO_ICONS = {'Bitcoin':'₿','Ethereum':'Ξ','Solana':'◎','Dogecoin':'🐕','Ripple':'✕'};
 
 // Restore settings
 (function restoreSettings() {
@@ -667,4 +669,137 @@ if (localStorage.getItem('hideTips') === '1') {
     if (tips) tips.style.display = 'none';
 }
 
+// ============================================================
+// AI STATUS — Check if server-side AI is available
+// ============================================================
+async function checkAIStatus() {
+    const badge = document.getElementById('aiStatusBadge');
+    try {
+        const r = await fetch('/api/ai-status');
+        const j = await r.json();
+        if (j.ai_available) {
+            aiAvailable = true;
+            badge.className = 'ai-status-badge active';
+            badge.textContent = '🟢 AI Active';
+            badge.title = `AI Analysis: ${j.model} via ${j.provider}`;
+        } else {
+            aiAvailable = false;
+            badge.className = 'ai-status-badge inactive';
+            badge.textContent = '⚪ Technical Only';
+            badge.title = 'Set GROQ_API_KEY on server to enable AI analysis';
+        }
+    } catch(e) {
+        badge.className = 'ai-status-badge inactive';
+        badge.textContent = '⚪ Technical Only';
+    }
+}
+
+// ============================================================
+// AI ENHANCE — Add AI insights to action cards after render
+// ============================================================
+async function aiEnhanceActions(actions) {
+    if (!aiAvailable || !actions || actions.length === 0) return;
+
+    // Build stock data for AI
+    const stocks = actions.map(a => ({
+        ticker: a.ticker, name: a.name, price: a.price,
+        score: a.score, rsi: a.rsi, trend: a.trend || 'neutral',
+        pct_1w: a.pct_1w, pct_1m: a.pct_1m,
+        pct_3m: a.pct_3m || null,
+    }));
+
+    try {
+        const r = await fetch('/api/ai-enhance', {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ stocks })
+        });
+        const j = await r.json();
+        if (!j.ai_enhanced || !j.results) return;
+
+        // Inject AI insights into the DOM
+        for (const [ticker, ai] of Object.entries(j.results)) {
+            const cards = document.querySelectorAll('.action-card.buy');
+            cards.forEach(card => {
+                if (card.querySelector('.ticker')?.textContent === ticker) {
+                    // Check if already has AI insight
+                    if (card.querySelector('.ai-insight-box')) return;
+                    const infoDiv = card.querySelector('.action-info');
+                    if (!infoDiv) return;
+
+                    const confCls = ai.ai_confidence === 'high' ? 'high' : ai.ai_confidence === 'low' ? 'low' : 'medium';
+                    const scoreCls = ai.ai_score > 10 ? 'positive' : ai.ai_score < -10 ? 'negative' : 'neutral';
+
+                    const aiBox = document.createElement('div');
+                    aiBox.className = 'ai-insight-box';
+                    aiBox.innerHTML = `
+                        <span class="ai-label">🤖 AI:</span>
+                        <span class="ai-reasoning">${ai.ai_reasoning}</span>
+                        ${ai.ai_risk ? `<br><span class="ai-risk">⚠️ ${ai.ai_risk}</span>` : ''}
+                        <span class="ai-confidence ${confCls}">${ai.ai_confidence}</span>
+                        <span class="ai-score-badge ${scoreCls}">AI: ${ai.ai_score > 0 ? '+' : ''}${ai.ai_score}</span>
+                        ${ai.combined_score != null ? `<span class="ai-score-badge ${ai.combined_score >= 25 ? 'positive' : ai.combined_score >= 0 ? 'neutral' : 'negative'}">Combined: ${ai.combined_score}</span>` : ''}
+                    `;
+                    infoDiv.appendChild(aiBox);
+                }
+            });
+        }
+    } catch(e) {
+        console.log('AI enhance failed:', e.message);
+    }
+}
+
+// Override renderActions to trigger AI enhancement after render
+const _originalRenderActions = renderActions;
+renderActions = function(d) {
+    _originalRenderActions(d);
+    // After rendering, trigger AI enhancement for buy actions (async, non-blocking)
+    if (aiAvailable && d.actions && d.actions.length > 0) {
+        const el = document.getElementById('actionsContent');
+        // Add loading indicator
+        const aiLoading = document.createElement('div');
+        aiLoading.className = 'ai-loading-inline';
+        aiLoading.id = 'aiLoadingIndicator';
+        aiLoading.textContent = '🤖 AI is analyzing your picks...';
+        el.prepend(aiLoading);
+
+        aiEnhanceActions(d.actions).then(() => {
+            const indicator = document.getElementById('aiLoadingIndicator');
+            if (indicator) indicator.remove();
+        });
+    }
+};
+
+// ============================================================
+// CRYPTO — Load crypto prices (on commodities tab)
+// ============================================================
+const _originalLoadCommodities = loadCommodities;
+loadCommodities = async function() {
+    await _originalLoadCommodities();
+    // Also load crypto after commodities
+    try {
+        const r = await fetch('/api/crypto');
+        const j = await r.json();
+        if (j.status === 'ok' && j.data && j.data.length > 0) {
+            const el = document.getElementById('commoditiesContent');
+            let h = el.innerHTML;
+            h += `<div style="margin-top:24px"><h3 style="margin-bottom:12px">🪙 Crypto — Top 25</h3></div>`;
+            h += '<div class="crypto-grid">';
+            j.data.forEach(c => {
+                const icon = CRYPTO_ICONS[c.name] || '🪙';
+                h += `<div class="crypto-card">
+                    <div style="font-size:1.4rem;margin-bottom:4px">${icon}</div>
+                    <div class="crypto-name">${c.name}</div>
+                    <div class="crypto-price">$${c.price.toLocaleString()}</div>
+                    <div class="crypto-change ${cc(c.change)}">${ci(c.change)} ${fc(c.change)}</div>
+                    ${c.pct_1w != null ? `<div style="font-size:0.75rem;color:var(--text-muted);margin-top:2px">Week: <span class="${cc(c.pct_1w)}">${fc(c.pct_1w)}</span></div>` : ''}
+                </div>`;
+            });
+            h += '</div>';
+            el.innerHTML = h;
+        }
+    } catch(e) { console.log('Crypto load failed:', e.message); }
+};
+
+// Init
+checkAIStatus();
 loadTodaysActions();

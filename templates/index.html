@@ -5,13 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>📊 Financial Investment Dashboard</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=6">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=7">
 </head>
 <body>
 
-<div class="header">
+    <div class="header">
     <div class="header-content">
         <h1>📊 Financial Investment Dashboard</h1>
+        <span id="aiStatusBadge" class="ai-status-badge" title="AI Analysis Status">⚪ Loading...</span>
         <div class="search-bar">
             <input type="text" id="searchInput" placeholder="🔍 Search any ticker (e.g. DUOL, TSLA, BTC-USD)..." autocomplete="off">
             <div id="searchResult" class="search-result" style="display:none"></div>
@@ -275,6 +276,6 @@
     </div>
 </div>
 
-<script src="{{ url_for('static', filename='main.js') }}?v=6"></script>
+<script src="{{ url_for('static', filename='main.js') }}?v=7"></script>
 </body>
 </html>

@@ -24,6 +24,12 @@ from analysis import (
     get_stock_news,
     get_earnings_info,
     get_portfolio_intelligence,
+    ai_is_available,
+    ai_analyze_stocks,
+    ai_analyze_single,
+    combine_scores,
+    get_crypto_data,
+    CRYPTO_STOCKS,
 )
 import socket
 import traceback
@@ -481,6 +487,85 @@ def api_market_regime():
     """Get current market regime (bull/bear/sideways/correction)."""
     try:
         data = _get_cached("market_regime", get_market_regime)
+        return safe_jsonify({"status": "ok", "data": data})
+    except Exception as e:
+        traceback.print_exc()
+        return safe_jsonify({"status": "error", "message": str(e)}, 500)
+
+
+# ---------------------------------------------------------------------------
+# AI-Enhanced Analysis Endpoints
+# ---------------------------------------------------------------------------
+
+@app.route("/api/ai-status")
+def api_ai_status():
+    """Check if server-side AI analysis is available."""
+    return safe_jsonify({
+        "status": "ok",
+        "ai_available": ai_is_available(),
+        "model": "llama-3.3-70b-versatile" if ai_is_available() else None,
+        "provider": "groq" if ai_is_available() else None,
+    })
+
+
+@app.route("/api/ai-enhance", methods=["POST"])
+def api_ai_enhance():
+    """AI-enhance a list of stock picks. Adds AI reasoning and combined scores."""
+    try:
+        if not ai_is_available():
+            return safe_jsonify({"status": "ok", "ai_enhanced": False, "results": {}})
+
+        body = request.get_json(force=True)
+        stocks = body.get("stocks", [])[:8]
+        if not stocks:
+            return safe_jsonify({"status": "ok", "ai_enhanced": False, "results": {}})
+
+        # Get market regime for context
+        regime = None
+        try:
+            regime = _get_cached("market_regime", get_market_regime)
+        except Exception:
+            pass
+
+        # Fetch news for each stock
+        for s in stocks:
+            ticker = s.get("ticker", "")
+            if ticker:
+                try:
+                    news = get_stock_news(ticker)
+                    if news.get("count", 0) > 0:
+                        s["news"] = news["headlines"][:3]
+                except Exception:
+                    pass
+
+        # Run AI analysis
+        ai_results = ai_analyze_stocks(stocks, market_regime=regime)
+
+        # Combine scores
+        for ticker, ai_data in ai_results.items():
+            # Find the original stock data to get technical score
+            for s in stocks:
+                if s.get("ticker", "").upper() == ticker:
+                    tech_score = s.get("score", 0)
+                    ai_data["combined_score"] = combine_scores(tech_score, ai_data["ai_score"])
+                    ai_data["technical_score"] = tech_score
+                    break
+
+        return safe_jsonify({
+            "status": "ok",
+            "ai_enhanced": True,
+            "results": ai_results,
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return safe_jsonify({"status": "ok", "ai_enhanced": False, "results": {}, "error": str(e)})
+
+
+@app.route("/api/crypto")
+def api_crypto():
+    """Get current crypto prices and daily changes."""
+    try:
+        data = _get_cached("crypto", get_crypto_data)
         return safe_jsonify({"status": "ok", "data": data})
     except Exception as e:
         traceback.print_exc()

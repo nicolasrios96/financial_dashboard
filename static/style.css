@@ -504,6 +504,65 @@ body:not(.advanced-mode) .tech-detail { display: none !important; }
 }
 .beginner-tips strong { color: var(--text); }
 
+/* ============================================================
+   AI ANALYSIS — Insight boxes, badges, status
+   ============================================================ */
+
+.ai-status-badge {
+    font-size: 0.7rem; padding: 4px 10px; border-radius: 20px;
+    font-weight: 600; white-space: nowrap; cursor: default;
+    background: var(--bg); border: 1px solid var(--border); color: var(--text-muted);
+}
+.ai-status-badge.active { background: rgba(0,200,83,0.15); border-color: rgba(0,200,83,0.4); color: var(--green); }
+.ai-status-badge.inactive { background: var(--bg); border-color: var(--border); color: var(--text-muted); }
+
+.ai-insight-box {
+    margin-top: 8px; padding: 10px 14px;
+    background: linear-gradient(135deg, rgba(68,138,255,0.08), rgba(179,136,255,0.08));
+    border: 1px solid rgba(68,138,255,0.2); border-radius: 10px;
+    font-size: 0.82rem; line-height: 1.5;
+}
+.ai-insight-box .ai-label {
+    font-weight: 700; color: var(--purple); margin-right: 6px;
+}
+.ai-insight-box .ai-reasoning { color: var(--text); }
+.ai-insight-box .ai-risk {
+    display: inline-block; margin-top: 4px; font-size: 0.75rem;
+    color: var(--text-muted); padding: 2px 8px;
+    background: var(--bg); border-radius: 6px;
+}
+.ai-insight-box .ai-confidence {
+    display: inline-block; margin-left: 6px; font-size: 0.65rem;
+    padding: 2px 6px; border-radius: 10px; font-weight: 600;
+}
+.ai-confidence.high { background: var(--green-bg); color: var(--green); }
+.ai-confidence.medium { background: var(--yellow-bg); color: var(--yellow); }
+.ai-confidence.low { background: var(--red-bg); color: var(--red); }
+
+.ai-score-badge {
+    display: inline-block; padding: 2px 8px; border-radius: 10px;
+    font-size: 0.7rem; font-weight: 700; margin-left: 6px;
+}
+.ai-score-badge.positive { background: var(--green-bg); color: var(--green); }
+.ai-score-badge.negative { background: var(--red-bg); color: var(--red); }
+.ai-score-badge.neutral { background: var(--yellow-bg); color: var(--yellow); }
+
+.ai-loading-inline {
+    font-size: 0.8rem; color: var(--purple); font-style: italic;
+    padding: 8px 0;
+}
+
+/* Crypto cards */
+.crypto-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
+.crypto-card {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px; transition: all 0.2s; text-align: center;
+}
+.crypto-card:hover { border-color: var(--accent); }
+.crypto-card .crypto-name { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 4px; }
+.crypto-card .crypto-price { font-size: 1.2rem; font-weight: 700; }
+.crypto-card .crypto-change { font-size: 0.9rem; font-weight: 600; margin-top: 4px; }
+
 /* --- Responsive --- */
 @media (max-width: 768px) {
     .chat-panel { width: 100%; }

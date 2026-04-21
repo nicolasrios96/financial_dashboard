@@ -1,10 +1,11 @@
 """
 Financial Analysis Engine
-Provides market data, technical analysis, stock recommendations,
+Provides market data, technical analysis, AI-enhanced stock recommendations,
 and actionable portfolio strategies with simulations.
-Uses yfinance data. No API keys required.
+Uses yfinance data + Groq AI for intelligent analysis.
 
-Stock Universe: 200+ tickers across US, EU, and Commodities.
+Stock Universe: 500+ tickers across US, EU, Crypto, and Commodities.
+AI Integration: Groq (Llama 3.3 70B) for sentiment analysis and reasoning.
 """
 
 import yfinance as yf
@@ -37,7 +38,7 @@ RETRY_BASE_DELAY = 1.0  # seconds, doubles each retry
 # ---------------------------------------------------------------------------
 
 STOCK_NAMES = {
-    # ===== US Stocks (120) =====
+    # ===== US Stocks (200+) =====
     "AAPL": "Apple Inc.", "MSFT": "Microsoft Corp.", "GOOGL": "Alphabet Inc.",
     "AMZN": "Amazon.com Inc.", "NVDA": "NVIDIA Corp.", "META": "Meta Platforms",
     "TSLA": "Tesla Inc.", "BRK-B": "Berkshire Hathaway B", "JPM": "JPMorgan Chase",
@@ -90,10 +91,42 @@ STOCK_NAMES = {
     # REITs
     "AMT": "American Tower", "PLD": "Prologis Inc.", "CCI": "Crown Castle",
     "O": "Realty Income", "SPG": "Simon Property Group",
+    # ===== NEW: Additional S&P 500 stocks =====
+    "ABBV": "AbbVie Inc.", "WFC": "Wells Fargo", "PM": "Philip Morris Intl.",
+    "CMCSA": "Comcast Corp.", "NEE": "NextEra Energy", "IBM": "IBM Corp.",
+    "GE": "GE Aerospace", "INTU": "Intuit Inc.", "SPGI": "S&P Global",
+    "DHR": "Danaher Corp.", "SYK": "Stryker Corp.", "MDT": "Medtronic plc",
+    "CI": "Cigna Group", "ELV": "Elevance Health", "CB": "Chubb Ltd.",
+    "SO": "Southern Company", "DUK": "Duke Energy", "ICE": "Intercontinental Exchange",
+    "CL": "Colgate-Palmolive", "MCO": "Moody's Corp.", "CME": "CME Group",
+    "PNC": "PNC Financial", "USB": "U.S. Bancorp", "TFC": "Truist Financial",
+    "AON": "Aon plc", "ITW": "Illinois Tool Works", "EMR": "Emerson Electric",
+    "NSC": "Norfolk Southern", "FDX": "FedEx Corp.", "GM": "General Motors",
+    "F": "Ford Motor Co.", "PSA": "Public Storage", "WELL": "Welltower Inc.",
+    "HCA": "HCA Healthcare", "MCK": "McKesson Corp.", "ADP": "Automatic Data Processing",
+    "FISV": "Fiserv Inc.", "MSCI": "MSCI Inc.", "APD": "Air Products",
+    "SHW": "Sherwin-Williams", "ECL": "Ecolab Inc.", "ROP": "Roper Technologies",
+    "CARR": "Carrier Global", "CTAS": "Cintas Corp.", "PAYX": "Paychex Inc.",
+    "FAST": "Fastenal Co.", "ODFL": "Old Dominion Freight", "CPRT": "Copart Inc.",
+    "VRSK": "Verisk Analytics", "MNST": "Monster Beverage", "KDP": "Keurig Dr Pepper",
+    "DLTR": "Dollar Tree", "DG": "Dollar General", "ROST": "Ross Stores",
+    "TJX": "TJX Companies", "ORLY": "O'Reilly Automotive", "AZO": "AutoZone Inc.",
+    "KMB": "Kimberly-Clark", "GIS": "General Mills", "K": "Kellanova",
+    "HSY": "Hershey Co.", "SJM": "J.M. Smucker", "HRL": "Hormel Foods",
+    "CLX": "Clorox Co.", "CHD": "Church & Dwight",
+    # AI / Data / Cloud
+    "SMCI": "Super Micro Computer", "ARM": "Arm Holdings", "AI": "C3.ai Inc.",
+    "PATH": "UiPath Inc.", "DUOL": "Duolingo Inc.", "CFLT": "Confluent Inc.",
+    "ESTC": "Elastic NV", "GTLB": "GitLab Inc.", "S": "SentinelOne Inc.",
+    "IOT": "Samsara Inc.", "BILL": "BILL Holdings",
+    # Aerospace / Space
+    "AXON": "Axon Enterprise", "HWM": "Howmet Aerospace", "TDG": "TransDigm Group",
+    "HEI": "HEICO Corp.",
 
-    # ===== EU Stocks (60) =====
+    # ===== EU Stocks (80+) =====
     # Netherlands
     "ASML.AS": "ASML Holding", "INGA.AS": "ING Group", "PHIA.AS": "Philips NV",
+    "AD.AS": "Ahold Delhaize", "WKL.AS": "Wolters Kluwer", "HEIA.AS": "Heineken NV",
     # France
     "MC.PA": "LVMH", "OR.PA": "L'Oréal", "AIR.PA": "Airbus SE",
     "BNP.PA": "BNP Paribas", "DG.PA": "Vinci SA", "RMS.PA": "Hermès",
@@ -101,29 +134,51 @@ STOCK_NAMES = {
     "EL.PA": "EssilorLuxottica", "CS.PA": "AXA SA", "BN.PA": "Danone SA",
     "KER.PA": "Kering SA", "SAF.PA": "Safran SA", "SAN.PA": "Sanofi SA",
     "STMPA.PA": "STMicroelectronics",
+    "CAP.PA": "Capgemini SE", "RI.PA": "Pernod Ricard", "SGO.PA": "Saint-Gobain",
+    "PUB.PA": "Publicis Groupe", "VIV.PA": "Vivendi SE",
     # Germany
     "SAP.DE": "SAP SE", "SIE.DE": "Siemens AG", "DTE.DE": "Deutsche Telekom",
     "ALV.DE": "Allianz SE", "BAS.DE": "BASF SE", "BAYN.DE": "Bayer AG",
     "ADS.DE": "Adidas AG", "MBG.DE": "Mercedes-Benz Group", "BMW.DE": "BMW AG",
     "VOW3.DE": "Volkswagen AG", "MUV2.DE": "Munich Re", "DBK.DE": "Deutsche Bank",
     "FRE.DE": "Fresenius SE",
+    "IFX.DE": "Infineon Technologies", "HEN3.DE": "Henkel AG", "RHM.DE": "Rheinmetall AG",
+    "MTX.DE": "MTU Aero Engines", "SHL.DE": "Siemens Healthineers",
     # Spain
     "SAN.MC": "Banco Santander", "IBE.MC": "Iberdrola", "FER.MC": "Ferrovial SE",
     "ITX.MC": "Inditex SA", "TEF.MC": "Telefónica SA",
+    "BBVA.MC": "BBVA", "AMS.MC": "Amadeus IT", "CABK.MC": "CaixaBank",
     # Italy
     "ENEL.MI": "Enel SpA", "ISP.MI": "Intesa Sanpaolo", "STLAM.MI": "Stellantis NV",
     "ENI.MI": "Eni SpA", "UCG.MI": "UniCredit SpA",
+    "RACE.MI": "Ferrari NV", "G.MI": "Assicurazioni Generali",
     # Belgium
     "ABI.BR": "AB InBev",
     # UK
     "SHEL.L": "Shell plc", "AZN.L": "AstraZeneca", "HSBA.L": "HSBC Holdings",
     "BP.L": "BP plc", "GSK.L": "GSK plc", "RIO.L": "Rio Tinto",
     "ULVR.L": "Unilever plc", "LSEG.L": "London Stock Exchange",
+    "DGE.L": "Diageo plc", "BATS.L": "British American Tobacco",
+    "REL.L": "RELX plc", "AAL.L": "Anglo American",
     # Nordic
     "NOVO-B.CO": "Novo Nordisk", "ERIC-B.ST": "Ericsson",
     "VOLV-B.ST": "Volvo Group",
+    "NIBE-B.ST": "NIBE Industrier", "SAND.ST": "Sandvik AB",
+    "MAERSK-B.CO": "A.P. Moller-Maersk",
     # Swiss
     "NESN.SW": "Nestlé SA", "ROG.SW": "Roche Holding", "NOVN.SW": "Novartis AG",
+    "ABBN.SW": "ABB Ltd.", "SREN.SW": "Swiss Re",
+
+    # ===== Crypto (Top 25) =====
+    "BTC-USD": "Bitcoin", "ETH-USD": "Ethereum", "BNB-USD": "Binance Coin",
+    "SOL-USD": "Solana", "XRP-USD": "Ripple", "ADA-USD": "Cardano",
+    "DOGE-USD": "Dogecoin", "DOT-USD": "Polkadot", "AVAX-USD": "Avalanche",
+    "MATIC-USD": "Polygon", "LINK-USD": "Chainlink", "UNI-USD": "Uniswap",
+    "ATOM-USD": "Cosmos", "LTC-USD": "Litecoin", "FIL-USD": "Filecoin",
+    "NEAR-USD": "NEAR Protocol", "APT-USD": "Aptos", "ARB-USD": "Arbitrum",
+    "OP-USD": "Optimism", "SUI-USD": "Sui", "AAVE-USD": "Aave",
+    "MKR-USD": "Maker", "RENDER-USD": "Render Token", "INJ-USD": "Injective",
+    "FET-USD": "Fetch.ai",
 
     # ===== Commodity ETFs =====
     "GLD": "SPDR Gold Trust", "SLV": "iShares Silver Trust",
@@ -131,6 +186,8 @@ STOCK_NAMES = {
     "DBA": "Invesco DB Agriculture", "DBC": "Invesco DB Commodity Index",
     "PDBC": "Invesco Optimum Yield Diversified Commodity",
     "COPX": "Global X Copper Miners", "UNG": "United States Natural Gas Fund",
+    "WEAT": "Teucrium Wheat Fund", "CORN": "Teucrium Corn Fund",
+    "CPER": "United States Copper Index", "JO": "iPath Bloomberg Coffee",
 
     # ===== ETFs =====
     "SPY": "S&P 500 ETF", "VOO": "Vanguard S&P 500", "QQQ": "NASDAQ 100 ETF",
@@ -147,6 +204,10 @@ STOCK_NAMES = {
     "XLC": "Communication Services", "EFA": "iShares MSCI EAFE",
     "TLT": "iShares 20+ Year Treasury",
     "IEFA": "iShares Core MSCI EAFE", "VIG": "Vanguard Dividend Appreciation",
+    "ARKK": "ARK Innovation ETF", "ARKG": "ARK Genomic Revolution",
+    "SOXX": "iShares Semiconductor", "HACK": "ETFMG Prime Cyber Security",
+    "BOTZ": "Global X Robotics & AI", "LIT": "Global X Lithium & Battery",
+    "TAN": "Invesco Solar ETF", "ICLN": "iShares Global Clean Energy",
 }
 
 # ---------------------------------------------------------------------------
@@ -182,30 +243,58 @@ US_STOCKS = [
     "SPOT", "TTWO", "EA",
     # REITs
     "AMT", "PLD", "CCI", "O", "SPG",
+    # ===== NEW: Additional S&P 500 stocks =====
+    "ABBV", "WFC", "PM", "CMCSA", "NEE", "IBM", "INTU", "SPGI",
+    "DHR", "SYK", "MDT", "CI", "ELV", "CB", "SO", "DUK", "ICE",
+    "CL", "MCO", "CME", "PNC", "USB", "TFC", "AON", "ITW", "EMR",
+    "NSC", "FDX", "GM", "F", "PSA", "WELL", "HCA", "MCK", "ADP",
+    "FISV", "MSCI", "APD", "SHW", "ECL", "ROP", "CARR", "CTAS",
+    "PAYX", "FAST", "ODFL", "CPRT", "VRSK", "MNST", "KDP",
+    "DLTR", "DG", "ROST", "TJX", "ORLY", "AZO",
+    "KMB", "GIS", "K", "HSY", "SJM", "HRL", "CLX", "CHD",
+    # AI / Data / Cloud
+    "SMCI", "ARM", "PATH", "DUOL", "CFLT", "ESTC", "GTLB", "S",
+    "IOT", "BILL",
+    # Aerospace / Space
+    "AXON", "HWM", "TDG", "HEI",
 ]
 
 EU_STOCKS = [
     # Netherlands
-    "ASML.AS", "INGA.AS", "PHIA.AS",
+    "ASML.AS", "INGA.AS", "PHIA.AS", "AD.AS", "WKL.AS", "HEIA.AS",
     # France
     "MC.PA", "OR.PA", "AIR.PA", "BNP.PA", "DG.PA", "RMS.PA",
     "TTE.PA", "AI.PA", "SU.PA", "EL.PA", "CS.PA", "BN.PA",
     "KER.PA", "SAF.PA", "SAN.PA", "STMPA.PA",
+    "CAP.PA", "RI.PA", "SGO.PA", "PUB.PA", "VIV.PA",
     # Germany
     "SAP.DE", "SIE.DE", "DTE.DE", "ALV.DE", "BAS.DE", "BAYN.DE",
     "ADS.DE", "MBG.DE", "BMW.DE", "VOW3.DE", "MUV2.DE", "DBK.DE", "FRE.DE",
+    "IFX.DE", "HEN3.DE", "RHM.DE", "MTX.DE", "SHL.DE",
     # Spain
     "SAN.MC", "IBE.MC", "FER.MC", "ITX.MC", "TEF.MC",
+    "BBVA.MC", "AMS.MC", "CABK.MC",
     # Italy
     "ENEL.MI", "ISP.MI", "STLAM.MI", "ENI.MI", "UCG.MI",
+    "RACE.MI", "G.MI",
     # Belgium
     "ABI.BR",
     # UK
     "SHEL.L", "AZN.L", "HSBA.L", "BP.L", "GSK.L", "RIO.L", "ULVR.L", "LSEG.L",
+    "DGE.L", "BATS.L", "REL.L", "AAL.L",
     # Nordic
     "NOVO-B.CO", "ERIC-B.ST", "VOLV-B.ST",
+    "NIBE-B.ST", "SAND.ST", "MAERSK-B.CO",
     # Swiss
-    "NESN.SW", "ROG.SW", "NOVN.SW",
+    "NESN.SW", "ROG.SW", "NOVN.SW", "ABBN.SW", "SREN.SW",
+]
+
+CRYPTO_STOCKS = [
+    "BTC-USD", "ETH-USD", "BNB-USD", "SOL-USD", "XRP-USD", "ADA-USD",
+    "DOGE-USD", "DOT-USD", "AVAX-USD", "MATIC-USD", "LINK-USD", "UNI-USD",
+    "ATOM-USD", "LTC-USD", "FIL-USD", "NEAR-USD", "APT-USD", "ARB-USD",
+    "OP-USD", "SUI-USD", "AAVE-USD", "MKR-USD", "RENDER-USD", "INJ-USD",
+    "FET-USD",
 ]
 
 US_INDICES = {
@@ -392,9 +481,9 @@ def _safe_download_daterange(ticker, start, end, interval="1d"):
 
 def _batch_download(tickers, period="3mo", interval="1d"):
     """Download data for multiple tickers using threading with retries.
-    Uses 12 workers for faster fetching of 200+ tickers."""
+    Uses 20 workers for faster fetching of 500+ tickers."""
     results = {}
-    with ThreadPoolExecutor(max_workers=12) as executor:
+    with ThreadPoolExecutor(max_workers=20) as executor:
         futures = {
             executor.submit(_safe_download, t, period, interval): t
             for t in tickers
@@ -408,6 +497,199 @@ def _batch_download(tickers, period="3mo", interval="1d"):
             except Exception:
                 pass
     return results
+
+
+# ---------------------------------------------------------------------------
+# AI Analysis Engine — Groq Integration (70% AI / 30% Technical)
+# ---------------------------------------------------------------------------
+
+_groq_client = None
+_ai_cache = {}
+_ai_cache_ttl = 1800  # 30 minutes
+
+
+def _get_groq_client():
+    """Lazy-initialize the Groq client using OpenAI-compatible SDK."""
+    global _groq_client
+    if _groq_client is not None:
+        return _groq_client
+    api_key = os.environ.get("GROQ_API_KEY", "")
+    if not api_key:
+        return None
+    try:
+        from openai import OpenAI
+        _groq_client = OpenAI(
+            api_key=api_key,
+            base_url="https://api.groq.com/openai/v1",
+        )
+        return _groq_client
+    except Exception as e:
+        print(f"  ⚠️ Could not initialize Groq client: {e}")
+        return None
+
+
+def ai_is_available():
+    """Check if AI analysis is available (Groq API key configured)."""
+    return bool(os.environ.get("GROQ_API_KEY", ""))
+
+
+def ai_analyze_stocks(stocks_data, market_regime=None):
+    """
+    Use Groq AI to analyze a batch of stocks.
+    Takes pre-computed technical data and returns AI sentiment + reasoning.
+    
+    stocks_data: list of dicts with ticker, name, price, score, rsi, trend, pct_1w, pct_1m, etc.
+    market_regime: dict with regime info (bull/bear/sideways)
+    
+    Returns: dict mapping ticker -> {ai_score, ai_reasoning, ai_risk, ai_confidence}
+    """
+    client = _get_groq_client()
+    if not client or not stocks_data:
+        return {}
+
+    # Check cache
+    cache_key = "ai_batch_" + "_".join(sorted(s["ticker"] for s in stocks_data[:8]))
+    now = datetime.now().timestamp()
+    if cache_key in _ai_cache:
+        cached, ts = _ai_cache[cache_key]
+        if now - ts < _ai_cache_ttl:
+            return cached
+
+    # Build the prompt
+    regime_text = ""
+    if market_regime and market_regime.get("regime") != "unknown":
+        regime_text = f"Market regime: {market_regime['regime'].upper()} — {market_regime.get('description', '')}\n"
+
+    stocks_text = ""
+    for s in stocks_data[:8]:  # Limit to 8 stocks per batch
+        news_text = ""
+        if s.get("news"):
+            news_text = " | News: " + "; ".join(n.get("title", "")[:60] for n in s["news"][:3])
+        stocks_text += (
+            f"- {s['ticker']} ({s['name']}): ${s['price']}, "
+            f"Tech Score: {s.get('score', 0)}, RSI: {s.get('rsi', 50)}, "
+            f"Trend: {s.get('trend', 'neutral')}, "
+            f"Week: {s.get('pct_1w', 0):+.1f}%, Month: {s.get('pct_1m', 0):+.1f}%"
+            f"{', 3M: ' + str(round(s['pct_3m'], 1)) + '%' if s.get('pct_3m') is not None else ''}"
+            f"{news_text}\n"
+        )
+
+    prompt = f"""You are a senior financial analyst. Analyze these stocks and provide your assessment.
+
+{regime_text}
+STOCKS TO ANALYZE:
+{stocks_text}
+
+For EACH stock, respond in this EXACT JSON format (no markdown, no extra text):
+{{
+  "TICKER": {{
+    "score": <number from -50 to 50, your sentiment score>,
+    "reasoning": "<1-2 sentence analysis including fundamentals, sector outlook, catalysts, risks>",
+    "risk": "<main risk factor in 5-10 words>",
+    "confidence": "<high/medium/low>"
+  }}
+}}
+
+Rules:
+- Positive score = bullish, negative = bearish, 0 = neutral
+- Consider news sentiment, sector trends, competitive position, macro factors
+- Be honest about risks — don't just agree with technical signals
+- If a stock has bad fundamentals but good technicals, flag it
+- If a stock is in a declining sector, penalize it regardless of short-term bounce
+- Consider the current market regime in your analysis"""
+
+    try:
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": "You are a senior financial analyst. Respond ONLY with valid JSON. No markdown, no code blocks, no extra text."},
+                {"role": "user", "content": prompt},
+            ],
+            max_tokens=1500,
+            temperature=0.3,
+        )
+
+        raw = response.choices[0].message.content.strip()
+        # Clean up potential markdown wrapping
+        if raw.startswith("```"):
+            raw = raw.split("\n", 1)[-1]
+            if raw.endswith("```"):
+                raw = raw[:-3]
+        raw = raw.strip()
+
+        result = json.loads(raw)
+
+        # Validate and normalize
+        ai_results = {}
+        for ticker, data in result.items():
+            ticker = ticker.upper().strip()
+            ai_score = max(-50, min(50, int(data.get("score", 0))))
+            ai_results[ticker] = {
+                "ai_score": ai_score,
+                "ai_reasoning": str(data.get("reasoning", ""))[:200],
+                "ai_risk": str(data.get("risk", ""))[:100],
+                "ai_confidence": str(data.get("confidence", "medium")).lower(),
+            }
+
+        # Cache results
+        _ai_cache[cache_key] = (ai_results, now)
+        return ai_results
+
+    except json.JSONDecodeError as e:
+        print(f"  ⚠️ AI response was not valid JSON: {e}")
+        return {}
+    except Exception as e:
+        print(f"  ⚠️ AI analysis failed: {e}")
+        return {}
+
+
+def ai_analyze_single(ticker, stock_data, news=None, market_regime=None):
+    """
+    AI analysis for a single stock (used in search and portfolio analysis).
+    Returns: {ai_score, ai_reasoning, ai_risk, ai_confidence} or empty dict.
+    """
+    enriched = dict(stock_data)
+    if news:
+        enriched["news"] = news
+    results = ai_analyze_stocks([enriched], market_regime=market_regime)
+    return results.get(ticker.upper(), {})
+
+
+def combine_scores(technical_score, ai_score):
+    """
+    Combine technical and AI scores with 70/30 AI/Technical weighting.
+    Returns combined score clamped to -100..100.
+    """
+    # AI score is -50 to 50, scale to -100 to 100
+    ai_scaled = ai_score * 2
+    combined = (0.30 * technical_score) + (0.70 * ai_scaled)
+    return max(-100, min(100, round(combined)))
+
+
+def get_crypto_data():
+    """Get current crypto prices and daily changes."""
+    data = _batch_download(CRYPTO_STOCKS, period="5d", interval="1d")
+
+    cryptos = []
+    for ticker in CRYPTO_STOCKS:
+        df = data.get(ticker)
+        if df is not None and len(df) >= 2:
+            close = df["Close"].squeeze()
+            current = float(close.iloc[-1])
+            prev = float(close.iloc[-2])
+            change = ((current - prev) / prev) * 100
+            pct_1w = float((close.iloc[-1] / close.iloc[-5] - 1) * 100) if len(close) >= 5 else None
+            name = STOCK_NAMES.get(ticker, ticker.replace("-USD", ""))
+
+            cryptos.append({
+                "name": name,
+                "ticker": ticker,
+                "price": round(current, 2),
+                "change": round(change, 2),
+                "pct_1w": round(pct_1w, 2) if pct_1w is not None else None,
+            })
+
+    return cryptos
 
 
 # ---------------------------------------------------------------------------
