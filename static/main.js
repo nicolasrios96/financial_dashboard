@@ -1,4 +1,4 @@
-﻿/* ============================================================
+/* ============================================================
    Financial Investment Dashboard â€” JavaScript
    Supports: 200+ stocks, commodities, sell tracking, trade history,
    portfolio export/import, server sync, stock search, Gemini AI chat.

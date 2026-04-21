@@ -4,20 +4,20 @@
    ============================================================ */
 
 :root {
-    --bg: #000000; --bg-card: #111111; --bg-card-hover: #1a1a1a;
-    --bg-elevated: #1c1c1e; --bg-input: #0a0a0a;
-    --border: #222222; --border-light: #2a2a2a;
-    --text: #ffffff; --text-secondary: #86868b; --text-tertiary: #48484a;
-    --green: #34C759; --green-bg: rgba(52,199,89,0.1);
-    --red: #FF3B30; --red-bg: rgba(255,59,48,0.1);
-    --blue: #007AFF; --blue-bg: rgba(0,122,255,0.1);
-    --yellow: #FFD60A; --yellow-bg: rgba(255,214,10,0.08);
-    --orange: #FF9F0A; --orange-bg: rgba(255,159,10,0.1);
-    --purple: #BF5AF2; --purple-bg: rgba(191,90,242,0.1);
+    --bg: #ffffff; --bg-card: #f5f5f7; --bg-card-hover: #ededf0;
+    --bg-elevated: #ffffff; --bg-input: #f5f5f7;
+    --border: #d2d2d7; --border-light: #e5e5ea;
+    --text: #1d1d1f; --text-secondary: #86868b; --text-tertiary: #aeaeb2;
+    --green: #34C759; --green-bg: rgba(52,199,89,0.08);
+    --red: #FF3B30; --red-bg: rgba(255,59,48,0.08);
+    --blue: #007AFF; --blue-bg: rgba(0,122,255,0.08);
+    --yellow: #FF9F0A; --yellow-bg: rgba(255,159,10,0.06);
+    --orange: #FF9F0A; --orange-bg: rgba(255,159,10,0.08);
+    --purple: #AF52DE; --purple-bg: rgba(175,82,222,0.08);
     --accent: #007AFF;
     --radius: 16px; --radius-sm: 10px; --radius-xs: 6px;
-    --shadow: 0 2px 20px rgba(0,0,0,0.3);
-    --shadow-lg: 0 8px 40px rgba(0,0,0,0.4);
+    --shadow: 0 1px 3px rgba(0,0,0,0.08);
+    --shadow-lg: 0 4px 20px rgba(0,0,0,0.1);
     --transition: all 0.2s ease;
 }
 
@@ -33,7 +33,7 @@ body {
    HEADER — Clean Apple-style navigation
    ============================================================ */
 .header {
-    background: rgba(0,0,0,0.8); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+    background: rgba(255,255,255,0.85); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
     border-bottom: 1px solid var(--border);
     padding: 12px 24px; position: sticky; top: 0; z-index: 100;
 }
