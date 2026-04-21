@@ -212,7 +212,7 @@ document.querySelectorAll('.tab').forEach(tab => {
 
 });
 
-function loadTabData(name) { if (dataLoaded[name]) return; switch(name) { case 'actions': loadTodaysActions(); break; case 'market': loadMarketData(); break; case 'commodities': loadCommodities(); break; } }
+function loadTabData(name) { if (dataLoaded[name]) return; switch(name) { case 'market': loadMarketData(); break; case 'commodities': loadCommodities(); break; } }
 
 
 
@@ -1692,8 +1692,6 @@ loadCommodities = async function() {
 // Init
 
 checkAIStatus();
-
-loadTodaysActions();
 
 
 
