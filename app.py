@@ -722,8 +722,26 @@ def api_chat():
             if len(first_word) >= 4 and re.search(r'\b' + re.escape(first_word) + r'\b', msg_upper):
                 mentioned_tickers.add(ticker)
 
-        # 3. Fetch real-time data for mentioned tickers (limit to 5 to avoid slow responses)
+        # 4. If NO specific tickers mentioned, inject today's top picks so AI has real data
         realtime_context = ""
+        if not mentioned_tickers:
+            try:
+                top_picks = _get_cached("recommendations_all_5", get_recommendations, market="all", top_n=5)
+                if top_picks:
+                    realtime_parts = ["\n=== TODAY'S TOP STOCK PICKS (live data from our analysis engine — recommend these) ==="]
+                    for pick in top_picks:
+                        realtime_parts.append(
+                            f"- {pick['ticker']} ({pick['name']}): ${pick['price']}, "
+                            f"Score: {pick['score']}/100, RSI: {pick['rsi']}, "
+                            f"Action: {pick['action']}, Trend: {pick['trend']}, "
+                            f"Week: {pick['pct_1w']:+.1f}%, Month: {pick['pct_1m']:+.1f}%, "
+                            f"Target: ${pick['target_price']}, Stop-Loss: ${pick['stop_loss']}"
+                        )
+                    realtime_context = "\n".join(realtime_parts)
+            except Exception:
+                pass
+
+        # 5. Fetch real-time data for mentioned tickers (limit to 5 to avoid slow responses)
         if mentioned_tickers:
             realtime_parts = ["\n=== REAL-TIME MARKET DATA (LIVE — use these prices, do NOT guess) ==="]
             for ticker in list(mentioned_tickers)[:5]:
