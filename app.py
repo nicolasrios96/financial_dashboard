@@ -793,13 +793,6 @@ def api_chat():
             + realtime_context + "\n"
             + portfolio_prices_context + "\n\n"
             + chat_context
-            + "\n\nCRITICAL RULES:"
-            + "\n1. ALWAYS use the real-time prices provided above. NEVER guess, estimate, or use memorized stock prices."
-            + "\n2. If a stock's live data is provided, cite the exact price and metrics."
-            + "\n3. If asked about a stock NOT in the data above, say 'I don't have live data for that ticker right now — use the search bar to look it up.'"
-            + "\n4. Be confident, specific, and actionable. Use ticker symbols and numbers."
-            + "\n5. Keep responses to 3-5 sentences unless asked for more detail."
-            + "\n6. Always end with a brief disclaimer."
         )
 
         client = _get_groq_client()
@@ -818,8 +811,8 @@ def api_chat():
         response = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=messages,
-            max_tokens=500,
-            temperature=0.7,
+            max_tokens=600,
+            temperature=0.5,
         )
 
         reply = response.choices[0].message.content.strip() if response.choices else "No response."

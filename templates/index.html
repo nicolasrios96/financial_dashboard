@@ -273,12 +273,13 @@
         <button class="btn" style="padding:4px 8px;font-size:0.8rem" onclick="toggleChat()">✕</button>
     </div>
     <div class="chat-quick-prompts">
-        <button onclick="sendQuickPrompt('Analyze my portfolio and tell me what to do')">📊 Analyze Portfolio</button>
-        <button onclick="sendQuickPrompt('What should I buy today with $1000?')">🎯 What to Buy</button>
-        <button onclick="sendQuickPrompt('Give me a market outlook for this week')">📈 Market Outlook</button>
+        <button onclick="sendQuickPrompt('Review my portfolio — what should I sell, hold, or buy more of?')">📊 Portfolio Review</button>
+        <button onclick="sendQuickPrompt('I have $1000 to invest. Give me your top 3 picks with entry prices and stop-losses.')">🎯 Top 3 Picks</button>
+        <button onclick="sendQuickPrompt('What is the market regime right now and how should I position my portfolio?')">📈 Market Strategy</button>
+        <button onclick="sendQuickPrompt('Compare NVDA vs AMD — which is the better buy right now?')">⚔️ Compare</button>
     </div>
     <div id="chatMessages" class="chat-messages">
-        <div class="chat-msg ai">👋 Hi! I'm your AI financial advisor powered by Llama 3.3. Ask me anything about stocks, your portfolio, or market conditions. Try the quick prompts above!</div>
+        <div class="chat-msg ai">👋 Hey, I'm Marcus — your portfolio strategist. I have live access to 500+ stocks, your portfolio data, and current market conditions. Ask me anything specific — the more detail you give, the better my analysis. Try the prompts above or just ask!</div>
     </div>
     <div class="chat-input-area">
         <input type="text" id="chatInput" placeholder="Ask about stocks, portfolio, market..." onkeydown="if(event.key==='Enter')sendChat()">
