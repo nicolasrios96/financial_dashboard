@@ -605,10 +605,112 @@ def api_chat():
             return safe_jsonify({"status": "error", "message": "No message provided."}, 400)
 
         # Build context
-        from analysis import get_chat_context, get_ai_analysis_context, _get_groq_client
+        from analysis import get_chat_context, get_ai_analysis_context, _get_groq_client, STOCK_NAMES
         ai_context = get_ai_analysis_context(holdings=holdings, trade_history=trade_history)
         chat_context = get_chat_context(holdings=holdings, trade_history=trade_history)
-        system_prompt = ai_context + "\n\n" + chat_context + "\n\nREMINDER: You are a Senior Financial Advisor. Be confident, specific, and actionable. Use ticker symbols and numbers. Keep responses to 3-5 sentences unless asked for more detail. Always end with a brief disclaimer."
+
+        # --- REAL-TIME DATA INJECTION ---
+        # Detect ticker symbols mentioned in the user's message
+        import re
+        msg_upper = user_message.upper()
+        mentioned_tickers = set()
+
+        # 1. Match against our known stock universe
+        for ticker in STOCK_NAMES:
+            # Match whole-word tickers (avoid matching "A" or "S" in normal words)
+            # For short tickers (1-2 chars), require exact match or $ prefix
+            if len(ticker) <= 2:
+                if f"${ticker}" in msg_upper or f" {ticker} " in f" {msg_upper} ":
+                    mentioned_tickers.add(ticker)
+            else:
+                # For longer tickers, match as whole word
+                if re.search(r'\b' + re.escape(ticker) + r'\b', msg_upper):
+                    mentioned_tickers.add(ticker)
+
+        # 2. Also detect $TICKER pattern (e.g., "$NVDA")
+        dollar_tickers = re.findall(r'\$([A-Z]{1,10}(?:\.[A-Z]{1,2})?(?:-[A-Z]{1,4})?)', msg_upper)
+        for t in dollar_tickers:
+            mentioned_tickers.add(t)
+
+        # 3. Fetch real-time data for mentioned tickers (limit to 5 to avoid slow responses)
+        realtime_context = ""
+        if mentioned_tickers:
+            realtime_parts = ["\n=== REAL-TIME MARKET DATA (LIVE — use these prices, do NOT guess) ==="]
+            for ticker in list(mentioned_tickers)[:5]:
+                try:
+                    data = search_ticker(ticker)
+                    if data and "error" not in data:
+                        line = (
+                            f"- {data['ticker']} ({data['name']}): "
+                            f"Price: ${data['price']}, "
+                            f"Daily: {data['daily_change']:+.2f}%, "
+                            f"Week: {data['pct_1w']:+.2f}%, "
+                            f"Month: {data['pct_1m']:+.2f}%, "
+                        )
+                        if data.get('pct_3m') is not None:
+                            line += f"3M: {data['pct_3m']:+.2f}%, "
+                        line += (
+                            f"RSI: {data['rsi']}, "
+                            f"Score: {data['score']}, "
+                            f"Action: {data['action']}, "
+                            f"Trend: {data['trend']}"
+                        )
+                        if data.get('sma_50'):
+                            line += f", SMA50: ${data['sma_50']}"
+                        if data.get('sma_200'):
+                            line += f", SMA200: ${data['sma_200']}"
+                        line += f", Target: ${data['target_price']}, Stop-Loss: ${data['stop_loss']}"
+                        realtime_parts.append(line)
+                except Exception:
+                    pass
+            if len(realtime_parts) > 1:
+                realtime_context = "\n".join(realtime_parts)
+
+        # 4. Also fetch live prices for user's portfolio holdings
+        portfolio_prices_context = ""
+        if holdings:
+            held_tickers = list(set(h.get("ticker", "").upper().strip() for h in holdings if h.get("ticker")))[:10]
+            # Only fetch if not already fetched above
+            unfetched = [t for t in held_tickers if t not in mentioned_tickers]
+            if unfetched:
+                portfolio_parts = ["\n=== LIVE PORTFOLIO PRICES ==="]
+                for ticker in unfetched[:10]:
+                    try:
+                        data = search_ticker(ticker)
+                        if data and "error" not in data:
+                            # Find buy price from holdings
+                            buy_info = ""
+                            for h in holdings:
+                                if h.get("ticker", "").upper().strip() == ticker:
+                                    bp = float(h.get("buy_price", 0))
+                                    shares = float(h.get("shares", 0))
+                                    if bp > 0:
+                                        pnl_pct = ((data['price'] - bp) / bp) * 100
+                                        buy_info = f", User bought at ${bp:.2f} ({pnl_pct:+.1f}% P&L, {shares} shares)"
+                                    break
+                            portfolio_parts.append(
+                                f"- {data['ticker']}: ${data['price']} "
+                                f"(Day: {data['daily_change']:+.2f}%, Week: {data['pct_1w']:+.2f}%, "
+                                f"Score: {data['score']}, {data['action']}){buy_info}"
+                            )
+                    except Exception:
+                        pass
+                if len(portfolio_parts) > 1:
+                    portfolio_prices_context = "\n".join(portfolio_parts)
+
+        system_prompt = (
+            ai_context + "\n\n"
+            + realtime_context + "\n"
+            + portfolio_prices_context + "\n\n"
+            + chat_context
+            + "\n\nCRITICAL RULES:"
+            + "\n1. ALWAYS use the real-time prices provided above. NEVER guess, estimate, or use memorized stock prices."
+            + "\n2. If a stock's live data is provided, cite the exact price and metrics."
+            + "\n3. If asked about a stock NOT in the data above, say 'I don't have live data for that ticker right now — use the search bar to look it up.'"
+            + "\n4. Be confident, specific, and actionable. Use ticker symbols and numbers."
+            + "\n5. Keep responses to 3-5 sentences unless asked for more detail."
+            + "\n6. Always end with a brief disclaimer."
+        )
 
         client = _get_groq_client()
         if not client:
