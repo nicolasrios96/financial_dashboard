@@ -303,82 +303,37 @@ async function sendChat() {
     if (!msg) return;
     input.value = '';
 
-    const key = localStorage.getItem('geminiApiKey');
-    const model = localStorage.getItem('geminiModel') || 'llama-3.3-70b-versatile';
-    const provider = localStorage.getItem('aiProvider') || 'groq';
-
     const messagesEl = document.getElementById('chatMessages');
     messagesEl.innerHTML += `<div class="chat-msg user">${escapeHtml(msg)}</div>`;
     messagesEl.innerHTML += `<div class="chat-msg ai loading" id="chatLoading">🤔 Thinking...</div>`;
     messagesEl.scrollTop = messagesEl.scrollHeight;
 
-    if (!key) {
-        const link = provider === 'groq' ? 'https://console.groq.com' : 'https://aistudio.google.com/apikey';
-        document.getElementById('chatLoading').outerHTML = `<div class="chat-msg ai">⚠️ Please set your API key in ⚙️ Settings first. <a href="${link}" target="_blank" style="color:var(--accent)">Get a free key here</a>.</div>`;
-        return;
-    }
-
     try {
-        // Get context from server
-        let context = '';
-        try {
-            const ctxR = await fetch('/api/chat-context', {
-                method: 'POST', headers: {'Content-Type':'application/json'},
-                body: JSON.stringify({ holdings: myPortfolio, trade_history: myTradeHistory })
-            });
-            const ctxJ = await ctxR.json();
-            if (ctxJ.status === 'ok') context = ctxJ.context;
-        } catch(e) {}
+        // Send to server-side chat endpoint (uses GROQ_API_KEY on server)
+        const r = await fetch('/api/chat', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({
+                message: msg,
+                history: chatHistory.slice(-10),
+                holdings: myPortfolio,
+                trade_history: myTradeHistory,
+            })
+        });
+        const j = await r.json();
 
-        const systemPrompt = context + '\n\nREMINDER: You are a Senior Financial Advisor. Be confident, specific, and actionable. Use ticker symbols and numbers. Keep responses to 3-5 sentences unless asked for more detail. Always end with a brief disclaimer.';
         let reply = '';
-
-        if (provider === 'groq') {
-            // Groq uses OpenAI-compatible API
-            const messages = [{role:'system', content: systemPrompt}];
-            // Add chat history (convert format)
-            chatHistory.forEach(h => {
-                messages.push({role: h.role === 'model' ? 'assistant' : h.role, content: h.parts[0].text});
-            });
-            messages.push({role:'user', content: msg});
-
-            const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-                method: 'POST',
-                headers: {'Content-Type':'application/json', 'Authorization': `Bearer ${key}`},
-                body: JSON.stringify({model, messages: messages.slice(-12), max_tokens: 500, temperature: 0.7})
-            });
-            const j = await r.json();
-            if (j.choices?.[0]?.message?.content) {
-                reply = j.choices[0].message.content;
-            } else if (j.error) {
-                reply = `❌ Error: ${j.error.message}`;
-            } else {
-                reply = '❌ No response. Try again.';
-            }
+        if (j.status === 'ok' && j.reply) {
+            reply = j.reply;
+        } else if (j.message) {
+            reply = `⚠️ ${j.message}`;
         } else {
-            // Gemini API
-            chatHistory.push({role:'user', parts:[{text: msg}]});
-            const body = {
-                system_instruction: { parts: [{ text: systemPrompt }] },
-                contents: chatHistory.slice(-10),
-            };
-            const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {
-                method: 'POST', headers: {'Content-Type':'application/json'},
-                body: JSON.stringify(body)
-            });
-            const j = await r.json();
-            if (j.candidates?.[0]?.content?.parts?.[0]?.text) {
-                reply = j.candidates[0].content.parts[0].text;
-            } else if (j.error) {
-                reply = `❌ Error: ${j.error.message}`;
-            } else {
-                reply = '❌ No response. Try again.';
-            }
+            reply = '❌ No response. Try again.';
         }
 
-        // Store in unified history format
-        if (provider === 'groq') chatHistory.push({role:'user', parts:[{text: msg}]});
-        chatHistory.push({role:'model', parts:[{text: reply}]});
+        // Store in history for context
+        chatHistory.push({role: 'user', content: msg});
+        chatHistory.push({role: 'assistant', content: reply});
 
         const loadingEl = document.getElementById('chatLoading');
         if (loadingEl) loadingEl.outerHTML = `<div class="chat-msg ai">${formatChatResponse(reply)}</div>`;

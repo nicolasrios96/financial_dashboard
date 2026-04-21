@@ -572,6 +572,56 @@ def api_crypto():
         return safe_jsonify({"status": "error", "message": str(e)}, 500)
 
 
+@app.route("/api/chat", methods=["POST"])
+def api_chat():
+    """Server-side AI chat — uses GROQ_API_KEY so users don't need their own key."""
+    try:
+        if not ai_is_available():
+            return safe_jsonify({"status": "error", "message": "AI not configured. Set GROQ_API_KEY on server."}, 503)
+
+        body = request.get_json(force=True)
+        user_message = body.get("message", "").strip()
+        history = body.get("history", [])[:20]  # Limit history
+        holdings = body.get("holdings", [])[:20]
+        trade_history = body.get("trade_history", [])[:50]
+
+        if not user_message:
+            return safe_jsonify({"status": "error", "message": "No message provided."}, 400)
+
+        # Build context
+        from analysis import get_chat_context, get_ai_analysis_context, _get_groq_client
+        ai_context = get_ai_analysis_context(holdings=holdings, trade_history=trade_history)
+        chat_context = get_chat_context(holdings=holdings, trade_history=trade_history)
+        system_prompt = ai_context + "\n\n" + chat_context + "\n\nREMINDER: You are a Senior Financial Advisor. Be confident, specific, and actionable. Use ticker symbols and numbers. Keep responses to 3-5 sentences unless asked for more detail. Always end with a brief disclaimer."
+
+        client = _get_groq_client()
+        if not client:
+            return safe_jsonify({"status": "error", "message": "AI client not available."}, 503)
+
+        # Build messages
+        messages = [{"role": "system", "content": system_prompt}]
+        for h in history[-10:]:
+            role = h.get("role", "user")
+            content = h.get("content", "")
+            if role in ("user", "assistant") and content:
+                messages.append({"role": role, "content": content})
+        messages.append({"role": "user", "content": user_message})
+
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=messages,
+            max_tokens=500,
+            temperature=0.7,
+        )
+
+        reply = response.choices[0].message.content.strip() if response.choices else "No response."
+        return safe_jsonify({"status": "ok", "reply": reply})
+
+    except Exception as e:
+        traceback.print_exc()
+        return safe_jsonify({"status": "error", "message": str(e)}, 500)
+
+
 @app.route("/api/clear-cache", methods=["POST"])
 def api_clear_cache():
     _cache.clear()

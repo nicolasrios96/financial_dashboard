@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>📊 Financial Investment Dashboard</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=7">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=8">
 </head>
 <body>
 
@@ -20,7 +20,6 @@
         <div class="header-actions">
             <span class="last-updated" id="lastUpdated"></span>
             <button class="btn mode-toggle" id="modeToggle" onclick="toggleSimpleMode()" title="Toggle Simple/Advanced mode">🎓 Simple</button>
-            <button class="btn" onclick="openSettings()" title="Settings">⚙️</button>
             <button class="btn" onclick="refreshAll()">🔄</button>
         </div>
     </div>
@@ -268,7 +267,7 @@
         <button onclick="sendQuickPrompt('Give me a market outlook for this week')">📈 Market Outlook</button>
     </div>
     <div id="chatMessages" class="chat-messages">
-        <div class="chat-msg ai">👋 Hi! I'm your AI financial advisor. Ask me anything about stocks, your portfolio, or market conditions. <br><br><em style="font-size:0.8rem;color:var(--text-muted)">Set your Gemini API key in ⚙️ Settings first.</em></div>
+        <div class="chat-msg ai">👋 Hi! I'm your AI financial advisor powered by Llama 3.3. Ask me anything about stocks, your portfolio, or market conditions. Try the quick prompts above!</div>
     </div>
     <div class="chat-input-area">
         <input type="text" id="chatInput" placeholder="Ask about stocks, portfolio, market..." onkeydown="if(event.key==='Enter')sendChat()">
@@ -276,6 +275,6 @@
     </div>
 </div>
 
-<script src="{{ url_for('static', filename='main.js') }}?v=7"></script>
+<script src="{{ url_for('static', filename='main.js') }}?v=8"></script>
 </body>
 </html>
