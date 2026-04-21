@@ -577,20 +577,120 @@ body:not(.advanced-mode) .tech-detail { display: none !important; }
 .ai-loading-inline { font-size: 0.75rem; color: var(--purple); font-style: italic; padding: 6px 0; }
 
 /* ============================================================
-   RESPONSIVE
+   RESPONSIVE — Mobile-first, Apple-style touch targets
    ============================================================ */
 @media (max-width: 768px) {
-    .chat-panel { width: 100%; }
-    .search-bar { max-width: 100%; order: 3; }
+    /* Header: stack vertically */
+    .header { padding: 10px 16px; }
+    .header-content { gap: 8px; }
+    .header h1 { font-size: 0.95rem; }
+    .search-bar { max-width: 100%; order: 3; flex-basis: 100%; }
+    .search-bar input { padding: 10px 14px; font-size: 0.9rem; }
+    .ai-status-badge { font-size: 0.6rem; padding: 2px 6px; }
+    .header-actions .last-updated { display: none; }
+
+    /* Tabs: scrollable, larger touch targets */
+    .tabs { padding: 10px 12px 0; gap: 0; }
+    .tab { padding: 10px 14px; font-size: 0.78rem; min-height: 44px; display: flex; align-items: center; }
+
+    /* Content */
+    .content { padding: 12px 12px 80px; }
+    .card { padding: 16px; border-radius: 12px; }
+    .card h2 { font-size: 1rem; }
+    .subtitle { font-size: 0.75rem; }
+
+    /* Grids: single column */
     .grid-2, .grid-3 { grid-template-columns: 1fr; }
-    .header h1 { font-size: 1rem; }
-    .tabs { padding: 8px 12px 0; }
-    .content { padding: 12px 12px 40px; }
-    .card { padding: 16px; }
-    .action-card { grid-template-columns: 1fr; }
-    .action-numbers { text-align: left; }
-    .strategy-selector { flex-wrap: wrap; }
-    .action-controls { flex-direction: column; align-items: stretch; }
-    .commodity-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
-    .trade-stats-grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
+
+    /* Action controls: stack vertically */
+    .action-controls { flex-direction: column; align-items: stretch; padding: 12px; gap: 10px; }
+    .invest-input-group { flex-direction: column; align-items: stretch; gap: 8px; }
+    .invest-input-group input { width: 100%; padding: 12px; font-size: 1rem; }
+    .invest-input-group label { font-size: 0.82rem; }
+
+    /* Strategy buttons: full width row */
+    .strategy-selector { width: 100%; }
+    .strategy-btn { flex: 1; padding: 10px 8px; min-height: 44px; font-size: 0.75rem; }
+
+    /* Action cards: single column, stacked */
+    .action-card { grid-template-columns: 1fr; gap: 10px; padding: 14px; }
+    .action-badge { width: auto; display: inline-block; margin-bottom: 4px; }
+    .action-numbers { text-align: left; min-width: auto; }
+    .action-numbers .invest-amt { font-size: 1.1rem; }
+    .action-info h3 { font-size: 0.9rem; }
+    .action-info .meta { gap: 6px; }
+
+    /* Holdings */
+    .holding-card { flex-direction: column; align-items: flex-start; gap: 8px; padding: 12px; }
+    .holding-card .price-info { text-align: left; min-width: auto; }
+
+    /* Tables */
+    table { font-size: 0.8rem; }
+    th { font-size: 0.65rem; padding: 6px 8px; }
+    td { padding: 8px; font-size: 0.8rem; }
+
+    /* Trade stats */
+    .trade-stats-grid { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+    .trade-stat { padding: 10px 6px; }
+    .trade-stat .value { font-size: 0.95rem; }
+
+    /* Goal cards */
+    .goal-card { padding: 16px; }
+    .goal-card .invest-big { font-size: 1.5rem; }
+
+    /* Portfolio profiles */
+    .profile-selector { gap: 6px; }
+    .profile-card { min-width: 100px; padding: 12px 8px; }
+    .profile-card .emoji { font-size: 1.2rem; margin-bottom: 4px; }
+    .profile-card .label { font-size: 0.8rem; }
+    .profile-card .desc { font-size: 0.65rem; }
+
+    /* Sim stats */
+    .sim-stats { grid-template-columns: repeat(2, 1fr); }
+
+    /* Commodity/Crypto grids */
+    .commodity-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .commodity-card { padding: 12px; }
+    .crypto-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+
+    /* Index cards */
+    .index-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+
+    /* Buttons: larger touch targets */
+    .btn { min-height: 40px; padding: 10px 14px; font-size: 0.82rem; }
+    .btn-primary { min-height: 44px; padding: 12px 20px; font-size: 0.9rem; }
+    .btn-sell, .btn-danger { min-height: 36px; padding: 6px 10px; font-size: 0.75rem; }
+
+    /* Chat panel: full width */
+    .chat-panel { width: 100%; }
+    .chat-toggle { width: 52px; height: 52px; bottom: 16px; right: 16px; }
+    .chat-input-area input { font-size: 0.9rem; padding: 10px 14px; }
+
+    /* Modal */
+    .modal-content { padding: 20px; margin: 12px; }
+
+    /* Beginner tips: hide on mobile (too much text) */
+    .beginner-tips { display: none; }
+
+    /* Sentiment bars */
+    .sentiment-bar { flex-wrap: wrap; font-size: 0.78rem; padding: 8px 12px; }
+
+    /* Search result */
+    .search-result { padding: 12px; }
+    .search-stock-card { flex-direction: column; gap: 10px; }
+    .search-stock-card .stock-price { text-align: left; }
+}
+
+/* Extra small screens (iPhone SE, etc.) */
+@media (max-width: 380px) {
+    .header h1 { font-size: 0.85rem; }
+    .tab { padding: 8px 10px; font-size: 0.72rem; }
+    .content { padding: 8px 8px 80px; }
+    .card { padding: 12px; }
+    .strategy-btn { font-size: 0.7rem; padding: 8px 6px; }
+    .trade-stats-grid { grid-template-columns: repeat(2, 1fr); }
+    .commodity-grid, .crypto-grid { grid-template-columns: 1fr 1fr; }
+    .index-grid { grid-template-columns: 1fr; }
+    .profile-selector { flex-direction: column; }
+    .profile-card { min-width: 100%; }
 }
