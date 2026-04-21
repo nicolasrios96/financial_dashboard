@@ -673,7 +673,70 @@ body:not(.advanced-mode) .tech-detail { display: none !important; }
 
     .search-result { padding: 10px; }
     .ai-insight-box { font-size: 0.65rem; padding: 6px 8px; }
+
+    /* Mobile compact ticker rows */
+    .mobile-ticker-row {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 10px 12px; background: var(--bg); border: 1px solid var(--border);
+        border-radius: 8px; margin-bottom: 4px; cursor: pointer;
+        transition: var(--transition); border-left: 3px solid var(--green);
+    }
+    .mobile-ticker-row:active { background: var(--bg-card-hover); }
+    .mobile-ticker-row.sell-row { border-left-color: var(--red); }
+    .mobile-ticker-row.avoid-row { border-left-color: var(--yellow); }
+    .mobile-ticker-row .ticker-left { display: flex; align-items: center; gap: 8px; }
+    .mobile-ticker-row .ticker-symbol { font-weight: 700; color: var(--accent); font-size: 0.82rem; min-width: 55px; }
+    .mobile-ticker-row .ticker-name { font-size: 0.68rem; color: var(--text-secondary); max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .mobile-ticker-row .ticker-right { text-align: right; }
+    .mobile-ticker-row .ticker-price { font-weight: 700; font-size: 0.85rem; }
+    .mobile-ticker-row .ticker-change { font-size: 0.68rem; font-weight: 600; }
+    .mobile-ticker-row .ticker-badge { font-size: 0.55rem; padding: 1px 5px; border-radius: 8px; font-weight: 600; }
+
+    /* Hide full action cards on mobile, show compact rows */
+    .action-card { display: none !important; }
+    .mobile-ticker-row { display: flex !important; }
 }
+
+/* Stock detail bottom sheet */
+.stock-detail-sheet {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: var(--bg-elevated); border-top: 1px solid var(--border);
+    border-radius: 16px 16px 0 0; padding: 20px 20px 30px;
+    max-height: 75vh; overflow-y: auto;
+    box-shadow: 0 -8px 30px rgba(0,0,0,0.15);
+    animation: slideUp 0.25s ease-out;
+}
+@keyframes slideUp {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+}
+.stock-detail-sheet .detail-handle {
+    width: 36px; height: 4px; background: var(--border);
+    border-radius: 2px; margin: 0 auto 16px;
+}
+.stock-detail-sheet .detail-header {
+    display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px;
+}
+.stock-detail-sheet .detail-ticker { font-size: 1.1rem; font-weight: 700; color: var(--accent); }
+.stock-detail-sheet .detail-name { font-size: 0.8rem; color: var(--text-secondary); }
+.stock-detail-sheet .detail-price { font-size: 1.4rem; font-weight: 800; letter-spacing: -0.02em; }
+.stock-detail-sheet .detail-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0;
+}
+.stock-detail-sheet .detail-item {
+    padding: 8px 10px; background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 8px; font-size: 0.75rem;
+}
+.stock-detail-sheet .detail-item .label { color: var(--text-tertiary); font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.05em; }
+.stock-detail-sheet .detail-item .value { font-weight: 700; font-size: 0.85rem; margin-top: 2px; }
+.stock-detail-sheet .detail-reason {
+    padding: 10px 12px; background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 8px; font-size: 0.75rem; color: var(--text-secondary); margin: 10px 0;
+}
+.stock-detail-sheet .detail-actions {
+    display: flex; gap: 8px; margin-top: 14px;
+}
+.stock-detail-sheet .detail-actions .btn { flex: 1; text-align: center; }
 
 /* Extra small (iPhone SE) */
 @media (max-width: 380px) {
