@@ -11,7 +11,7 @@
 
     <div class="header">
     <div class="header-content">
-        <h1>📊 Financial Investment Dashboard</h1>
+        <h1>Financial Dashboard</h1>
         <span id="aiStatusBadge" class="ai-status-badge" title="AI Analysis Status">⚪ Loading...</span>
         <div class="search-bar">
             <input type="text" id="searchInput" placeholder="🔍 Search any ticker (e.g. DUOL, TSLA, BTC-USD)..." autocomplete="off">
@@ -26,12 +26,12 @@
 </div>
 
 <div class="tabs">
-    <div class="tab active" data-tab="actions">🎯 Today's Actions</div>
-    <div class="tab" data-tab="holdings">💼 My Holdings</div>
-    <div class="tab" data-tab="goal">💰 Goal Calculator</div>
-    <div class="tab" data-tab="portfolios">📊 Portfolios</div>
-    <div class="tab" data-tab="market">📈 Market & Movers</div>
-    <div class="tab" data-tab="commodities">🏆 Commodities</div>
+    <div class="tab active" data-tab="actions">Today's Actions</div>
+    <div class="tab" data-tab="holdings">My Holdings</div>
+    <div class="tab" data-tab="goal">Goal Calculator</div>
+    <div class="tab" data-tab="portfolios">Portfolios</div>
+    <div class="tab" data-tab="market">Market & Movers</div>
+    <div class="tab" data-tab="commodities">Commodities & Crypto</div>
 </div>
 
 <div class="content">
@@ -52,8 +52,8 @@
     <!-- ==================== TODAY'S ACTIONS ==================== -->
     <div class="tab-panel active" id="panel-actions">
         <div class="card">
-            <h2>🎯 Today's Actions — Just Follow This Plan</h2>
-            <p class="subtitle">Enter how much you want to invest, pick a strategy, and get your exact buy list. Scanning 200+ stocks across US & EU markets.</p>
+            <h2>Today's Actions</h2>
+            <p class="subtitle">Enter how much you want to invest, pick a strategy, and get your exact buy list. AI-powered analysis across 500+ stocks, crypto & EU markets.</p>
             <div class="action-controls">
                 <div class="invest-input-group">
                     <label>💰 I want to invest:</label>
@@ -67,7 +67,7 @@
                 <button class="btn btn-primary" onclick="loadTodaysActions()">🚀 Get My Plan</button>
             </div>
             <div id="actionsContent">
-                <div class="loading"><div class="spinner"></div><br>Analyzing 200+ stocks across US & EU markets...</div>
+                <div class="loading"><div class="spinner"></div><br>Analyzing 500+ stocks across US, EU & crypto markets...</div>
             </div>
         </div>
     </div>
