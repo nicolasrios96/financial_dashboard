@@ -875,6 +875,7 @@ function renderActions(d) {
  }
 
  h += `<div class="sentiment-bar ${d.sentiment.color}"><strong>${d.sentiment.label}</strong> ${d.sentiment.desc}<span style="margin-left:auto;font-size:0.8rem">${d.strategy_label} $${d.investment.toLocaleString()}</span></div>`;
+ if (d.fallback_note) h += `<div style="padding:10px 16px;background:var(--yellow-bg);border:1px solid rgba(255,214,0,0.3);border-radius:8px;margin-bottom:12px;font-size:0.8rem;color:var(--yellow)">${d.fallback_note}</div>`;
 
  if (d.actions.length > 0) {
 

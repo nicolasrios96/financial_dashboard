@@ -1373,13 +1373,13 @@ def get_todays_actions(investment=1000, strategy="best"):
             result["urgency"] = "Act now" if score <= -50 else "This week"
             sells.append(result)
 
-        elif score >= 40 and macd > 0 and vol_ratio > 1.2 and pct_1w > 0:
-            # QUICK BUY — strong short-term momentum
+        elif score >= 25 and macd > 0 and pct_1w > 0:
+            # QUICK BUY — short-term momentum (relaxed criteria for more results)
             reason = _build_reason(result, "quick")
             result["reason"] = reason
             result["strategy_type"] = "quick"
             result["hold_label"] = "Quick Flip · 1-2 weeks"
-            result["urgency"] = "Act now" if score >= 60 else "This week"
+            result["urgency"] = "Act now" if score >= 50 else "This week"
             quick_buys.append(result)
 
         elif score >= 15 and rsi < 55:
@@ -1414,9 +1414,19 @@ def get_todays_actions(investment=1000, strategy="best"):
         selected.sort(key=lambda x: x["score"], reverse=True)
         selected = selected[:5]
 
+    # Track if we had to fallback
+    fallback_note = ""
     if not selected:
-        # Fallback: if no strong signals, recommend safe ETFs
-        selected = long_buys[:3] if long_buys else quick_buys[:3]
+        if strategy == "quick":
+            fallback_note = "⚠️ No Quick Flip opportunities found in current market conditions. Showing best available Long Hold picks instead."
+            selected = long_buys[:5]
+        elif strategy == "long":
+            fallback_note = "⚠️ No Long Hold opportunities found. Showing best available Quick Flip picks instead."
+            selected = quick_buys[:5]
+        else:
+            selected = long_buys[:3] if long_buys else quick_buys[:3]
+            if not selected:
+                fallback_note = "⚠️ Very few opportunities in current market. Consider holding cash."
 
     # Allocate investment across selected picks
     actions = []
@@ -1500,6 +1510,7 @@ def get_todays_actions(investment=1000, strategy="best"):
         "sell_alerts": sell_alerts,
         "total_picks": len(actions),
         "cash_remaining": round(investment - sum(a["invest_amount"] for a in actions), 2),
+        "fallback_note": fallback_note,
     }
 
 
