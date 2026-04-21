@@ -749,51 +749,95 @@ function selectStrategy(strategy, btn) { currentStrategy = strategy; document.qu
 
 
 async function loadTodaysActions() {
-
  const investment = document.getElementById('actionInvestment').value || 1000;
-
  const el = document.getElementById('actionsContent');
-
- el.innerHTML = '<div class="loading"><div class="spinner"></div><br>Analyzing 500+ stocks across US, EU & crypto markets...</div>';
-
  saveSettings();
 
- try {
-
- // Fetch actions and market regime in parallel
-
- const [actionsRes, regimeRes] = await Promise.all([
-
- fetch(`/api/todays-actions?investment=${investment}&strategy=${currentStrategy}`),
-
- fetch('/api/market-regime').catch(() => null)
-
- ]);
-
- const j = await actionsRes.json();
-
- if (j.status !== 'ok') throw new Error(j.message);
-
-
-
- // Add market regime to data if available
-
- let regimeData = null;
-
- if (regimeRes) {
-
- try { const rj = await regimeRes.json(); if (rj.status === 'ok') regimeData = rj.data; } catch(e) {}
-
+ // --- STEP 1: Show cached data instantly (if available) ---
+ const cacheKey = 'cachedActions_' + investment + '_' + currentStrategy;
+ const cached = localStorage.getItem(cacheKey);
+ let showedCache = false;
+ if (cached) {
+  try {
+   const cachedData = JSON.parse(cached);
+   const age = Date.now() - (cachedData._cachedAt || 0);
+   const ageMin = Math.round(age / 60000);
+   if (age < 3600000) { // Show cache if less than 1 hour old
+    renderActions(cachedData);
+    showedCache = true;
+    // Add "refreshing" banner at top
+    const banner = document.createElement('div');
+    banner.id = 'refreshBanner';
+    banner.style.cssText = 'padding:8px 14px;background:var(--blue-bg);border:1px solid rgba(0,122,255,0.2);border-radius:8px;margin-bottom:10px;font-size:0.75rem;color:var(--blue);display:flex;align-items:center;gap:8px';
+    banner.innerHTML = '<div class="spinner" style="width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite;flex-shrink:0"></div> Showing data from ' + ageMin + ' min ago — refreshing with latest prices...';
+    el.prepend(banner);
+   }
+  } catch(e) {}
  }
 
- j.data.market_regime = regimeData;
+ // --- STEP 2: If no cache, show progress steps ---
+ if (!showedCache) {
+  el.innerHTML = '<div class="loading" id="loadingProgress">' +
+   '<div class="spinner"></div><br>' +
+   '<div id="loadStep" style="font-size:0.85rem;color:var(--text-secondary)">📡 Connecting to market data...</div>' +
+   '<div style="margin-top:12px;font-size:0.7rem;color:var(--text-tertiary)">This takes 15-30s on first load (500+ stocks to scan)</div>' +
+   '</div>';
+  // Simulate progress steps
+  setTimeout(() => { const s = document.getElementById('loadStep'); if (s) s.innerHTML = '📊 Fetching US & EU stock data...'; }, 3000);
+  setTimeout(() => { const s = document.getElementById('loadStep'); if (s) s.innerHTML = '🧮 Running technical analysis on 500+ stocks...'; }, 8000);
+  setTimeout(() => { const s = document.getElementById('loadStep'); if (s) s.innerHTML = '🎯 Selecting best picks for your strategy...'; }, 15000);
+  setTimeout(() => { const s = document.getElementById('loadStep'); if (s) s.innerHTML = '⏳ Almost done — finalizing recommendations...'; }, 25000);
+ }
 
+ // --- STEP 3: Fetch market indices quickly (show at top) ---
+ if (!showedCache) {
+  fetch('/api/market-overview').then(r => r.json()).then(j => {
+   if (j.status === 'ok' && j.data) {
+    const indices = [...(j.data.us || []), ...(j.data.eu || [])];
+    if (indices.length > 0 && document.getElementById('loadingProgress')) {
+     const quickBar = document.createElement('div');
+     quickBar.style.cssText = 'display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-bottom:16px;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:10px';
+     indices.slice(0, 6).forEach(idx => {
+      const cls = idx.change >= 0 ? 'positive' : 'negative';
+      const sign = idx.change >= 0 ? '+' : '';
+      quickBar.innerHTML += '<div style="text-align:center;min-width:80px"><div style="font-size:0.6rem;color:var(--text-tertiary)">' + idx.name + '</div><div style="font-size:0.8rem;font-weight:700">' + idx.price.toLocaleString() + '</div><div class="' + cls + '" style="font-size:0.7rem;font-weight:600">' + sign + idx.change.toFixed(2) + '%</div></div>';
+     });
+     const lp = document.getElementById('loadingProgress');
+     if (lp) lp.parentNode.insertBefore(quickBar, lp);
+    }
+   }
+  }).catch(() => {});
+ }
 
+ // --- STEP 4: Fetch full analysis ---
+ try {
+  const [actionsRes, regimeRes] = await Promise.all([
+   fetch('/api/todays-actions?investment=' + investment + '&strategy=' + currentStrategy),
+   fetch('/api/market-regime').catch(() => null)
+  ]);
+  const j = await actionsRes.json();
+  if (j.status !== 'ok') throw new Error(j.message);
 
- renderActions(j.data); dataLoaded['actions'] = true; ts();
+  let regimeData = null;
+  if (regimeRes) {
+   try { const rj = await regimeRes.json(); if (rj.status === 'ok') regimeData = rj.data; } catch(e) {}
+  }
+  j.data.market_regime = regimeData;
 
- } catch(e) { el.innerHTML = `<div class="error-msg"> ${e.message}<br><br><button class="btn" onclick="loadTodaysActions()"> Try Again</button></div>`; }
+  // Cache results for next visit
+  j.data._cachedAt = Date.now();
+  try { localStorage.setItem(cacheKey, JSON.stringify(j.data)); } catch(e) {}
 
+  renderActions(j.data); dataLoaded['actions'] = true; ts();
+ } catch(e) {
+  if (!showedCache) {
+   el.innerHTML = '<div class="error-msg">❌ ' + e.message + '<br><br><button class="btn" onclick="loadTodaysActions()">🔄 Try Again</button></div>';
+  } else {
+   // Remove refresh banner, keep cached data
+   const banner = document.getElementById('refreshBanner');
+   if (banner) banner.innerHTML = '⚠️ Could not refresh — showing cached data. <button class="btn" style="font-size:0.7rem;padding:3px 8px;margin-left:8px" onclick="loadTodaysActions()">Retry</button>';
+  }
+ }
 }
 
 
