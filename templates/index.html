@@ -78,9 +78,10 @@
             <h2>💼 My Portfolio — Track & Get Advice</h2>
             <p class="subtitle">Add your stocks with buy price and date. Sell them to track your win/loss history. Get personalized advice based on your actual P&L.</p>
             <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
-                <button class="btn" onclick="exportPortfolio()">📥 Export</button>
+                <button class="btn" onclick="exportPortfolio()">📥 Export JSON</button>
+                <button class="btn" onclick="exportPortfolioCSV()">📥 Export CSV</button>
                 <button class="btn" onclick="document.getElementById('importFile').click()">📤 Import</button>
-                <input type="file" id="importFile" accept=".json" style="display:none" onchange="importPortfolio(event)">
+                <input type="file" id="importFile" accept=".json,.csv" style="display:none" onchange="importPortfolio(event)">
                 <button class="btn" onclick="syncToServer()" title="Save to server">💾 Save to Server</button>
                 <button class="btn" onclick="syncFromServer()" title="Load from server">☁️ Load from Server</button>
             </div>

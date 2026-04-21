@@ -1180,9 +1180,90 @@ renderPortfolioList();
 
 // Export/Import/Sync
 
-function exportPortfolio() { const d={holdings:myPortfolio,trade_history:myTradeHistory,exported_at:new Date().toISOString()}; const b=new Blob([JSON.stringify(d,null,2)],{type:'application/json'}); const u=URL.createObjectURL(b); const a=document.createElement('a'); a.href=u; a.download=`portfolio_${new Date().toISOString().split('T')[0]}.json`; a.click(); URL.revokeObjectURL(u); showToast('Exported!','success'); }
+function exportPortfolio() { const d={holdings:myPortfolio,trade_history:myTradeHistory,exported_at:new Date().toISOString()}; const b=new Blob([JSON.stringify(d,null,2)],{type:'application/json'}); const u=URL.createObjectURL(b); const a=document.createElement('a'); a.href=u; a.download=`portfolio_${new Date().toISOString().split('T')[0]}.json`; a.click(); URL.revokeObjectURL(u); showToast('Exported JSON!','success'); }
 
-function importPortfolio(event) { const f=event.target.files[0]; if(!f)return; const r=new FileReader(); r.onload=function(e){try{const d=JSON.parse(e.target.result);if(d.holdings&&Array.isArray(d.holdings)){if(!confirm(`Import ${d.holdings.length} holdings?`))return;myPortfolio=d.holdings;myTradeHistory=d.trade_history||[];savePortfolio();renderPortfolioList();document.getElementById('holdingsContent').innerHTML='';showToast('Imported!','success');}else alert('Invalid file');}catch(err){alert('Error: '+err.message);}}; r.readAsText(f); event.target.value=''; }
+function exportPortfolioCSV() {
+ if (!myPortfolio.length) { showToast('No holdings to export', 'info'); return; }
+ let csv = 'ticker,shares,buy_price,buy_date\n';
+ myPortfolio.forEach(h => {
+  csv += `${h.ticker},${h.shares},${h.buy_price},${h.buy_date || ''}\n`;
+ });
+ const b = new Blob([csv], {type: 'text/csv'});
+ const u = URL.createObjectURL(b);
+ const a = document.createElement('a');
+ a.href = u; a.download = `portfolio_${new Date().toISOString().split('T')[0]}.csv`;
+ a.click(); URL.revokeObjectURL(u);
+ showToast('Exported CSV!', 'success');
+}
+
+function importPortfolio(event) {
+ const f = event.target.files[0];
+ if (!f) return;
+ const ext = f.name.split('.').pop().toLowerCase();
+ const r = new FileReader();
+ r.onload = function(e) {
+  try {
+   if (ext === 'csv') {
+    let text = e.target.result;
+    if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+    const lines = text.split(/\r?\n/).filter(l => l.trim());
+    if (lines.length < 2) { alert('CSV file is empty or has no data rows.'); return; }
+    const header = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/['"]/g, ''));
+    const colMap = {};
+    const tickerNames = ['ticker','symbol','stock','instrument','code'];
+    const sharesNames = ['shares','quantity','qty','amount','units'];
+    const priceNames = ['buy_price','price','avg_price','cost_per_share','average_price','cost','buy price','avg price'];
+    const dateNames = ['buy_date','date','purchase_date','bought','buy date','purchase date'];
+    header.forEach((col, i) => {
+     if (colMap.ticker === undefined && tickerNames.includes(col)) colMap.ticker = i;
+     else if (colMap.shares === undefined && sharesNames.includes(col)) colMap.shares = i;
+     else if (colMap.buy_price === undefined && priceNames.includes(col)) colMap.buy_price = i;
+     else if (colMap.buy_date === undefined && dateNames.includes(col)) colMap.buy_date = i;
+    });
+    if (colMap.ticker === undefined) { alert('CSV must have a "ticker" or "symbol" column.\n\nExpected format:\nticker,shares,buy_price,buy_date\nNVDA,5,200.50,2026-03-15'); return; }
+    if (colMap.shares === undefined) { alert('CSV must have a "shares" or "quantity" column.'); return; }
+    if (colMap.buy_price === undefined) { alert('CSV must have a "buy_price" or "price" column.'); return; }
+    const parsed = [];
+    const errors = [];
+    for (let i = 1; i < lines.length; i++) {
+     const cols = lines[i].split(',').map(c => c.trim().replace(/^["']|["']$/g, ''));
+     const ticker = (cols[colMap.ticker] || '').toUpperCase().trim();
+     const shares = parseFloat(cols[colMap.shares]);
+     const buy_price = parseFloat(cols[colMap.buy_price]);
+     const buy_date = colMap.buy_date !== undefined ? (cols[colMap.buy_date] || '').trim() : '';
+     if (!ticker) continue;
+     if (isNaN(shares) || shares <= 0) { errors.push('Row '+(i+1)+': Invalid shares for '+ticker); continue; }
+     if (isNaN(buy_price) || buy_price <= 0) { errors.push('Row '+(i+1)+': Invalid price for '+ticker); continue; }
+     parsed.push({ ticker, shares, buy_price, buy_date });
+    }
+    if (parsed.length === 0) { alert('No valid holdings found in CSV.' + (errors.length ? '\n\nErrors:\n' + errors.join('\n') : '')); return; }
+    let msg = 'Found ' + parsed.length + ' holdings in CSV:\n\n';
+    parsed.slice(0, 8).forEach(h => { msg += '  ' + h.ticker + ': ' + h.shares + ' shares @ $' + h.buy_price + '\n'; });
+    if (parsed.length > 8) msg += '  ... and ' + (parsed.length - 8) + ' more\n';
+    if (errors.length) msg += '\n⚠️ ' + errors.length + ' row(s) skipped (invalid data)';
+    msg += '\n\nImport these holdings?';
+    if (!confirm(msg)) return;
+    myPortfolio = parsed;
+    myTradeHistory = [];
+    savePortfolio(); renderPortfolioList();
+    document.getElementById('holdingsContent').innerHTML = '';
+    showToast('Imported ' + parsed.length + ' holdings from CSV!', 'success');
+   } else {
+    const d = JSON.parse(e.target.result);
+    if (d.holdings && Array.isArray(d.holdings)) {
+     if (!confirm('Import ' + d.holdings.length + ' holdings?')) return;
+     myPortfolio = d.holdings;
+     myTradeHistory = d.trade_history || [];
+     savePortfolio(); renderPortfolioList();
+     document.getElementById('holdingsContent').innerHTML = '';
+     showToast('Imported from JSON!', 'success');
+    } else { alert('Invalid JSON file. Expected {holdings: [...]}'); }
+   }
+  } catch(err) { alert('Error reading file: ' + err.message); }
+ };
+ r.readAsText(f);
+ event.target.value = '';
+}
 
 async function syncToServer() { try{const r=await fetch('/api/portfolio-data',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({holdings:myPortfolio,trade_history:myTradeHistory})});const j=await r.json();if(j.status==='ok')showToast('Saved to server!','success');else throw new Error(j.message);}catch(e){showToast('Failed: '+e.message,'error');} }
 
