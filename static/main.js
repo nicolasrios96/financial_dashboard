@@ -1645,3 +1645,39 @@ function selectAutocomplete(ticker) {
     document.getElementById('searchInput').value = ticker;
     searchTicker(ticker);
 }
+
+
+
+// ============================================================
+// FIX: Override search input to only show autocomplete while typing
+// Yahoo search only fires on Enter or when tapping a suggestion
+// ============================================================
+(function() {
+    var si = document.getElementById('searchInput');
+    // Remove all existing input listeners by cloning
+    var newSi = si.cloneNode(true);
+    si.parentNode.replaceChild(newSi, si);
+
+    var acTimer = null;
+
+    newSi.addEventListener('input', function() {
+        clearTimeout(searchTimeout);
+        clearTimeout(acTimer);
+        var val = this.value.trim();
+        if (val.length < 1) { document.getElementById('searchResult').style.display = 'none'; return; }
+        // Only show autocomplete suggestions while typing (no Yahoo search)
+        acTimer = setTimeout(function() { fetchAutocomplete(val); }, 150);
+    });
+
+    newSi.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            clearTimeout(acTimer);
+            var val = this.value.trim().toUpperCase();
+            if (val) searchTicker(val);
+        }
+        if (e.key === 'Escape') {
+            document.getElementById('searchResult').style.display = 'none';
+            this.blur();
+        }
+    });
+})();
