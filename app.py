@@ -279,6 +279,83 @@ def api_compound():
         return safe_jsonify({"status": "error", "message": str(e)}, 500)
 
 
+@app.route("/api/montecarlo")
+def api_montecarlo():
+    """Monte Carlo compound interest simulation using historical S&P 500 volatility."""
+    try:
+        import numpy as np
+        initial = _parse_float(request.args.get("initial"), 1000, min_val=0, max_val=100_000_000)
+        monthly = _parse_float(request.args.get("monthly"), 100, min_val=0, max_val=1_000_000)
+        months = _parse_int(request.args.get("months"), 12, min_val=1, max_val=600)
+        annual_return = _parse_float(request.args.get("return"), 10, min_val=0, max_val=100)
+        n_sims = 1000
+
+        # Historical S&P 500 stats (annualized)
+        # Use user's return as mean, but apply realistic volatility (~15.5%)
+        annual_vol = 0.155  # S&P 500 historical volatility
+        monthly_mean = (annual_return / 100) / 12
+        monthly_vol = annual_vol / (12 ** 0.5)
+
+        # Run simulations
+        np.random.seed(None)
+        final_values = []
+        # For percentile paths, store all paths
+        all_paths = np.zeros((n_sims, months + 1))
+
+        for sim in range(n_sims):
+            value = initial
+            all_paths[sim, 0] = value
+            for m in range(1, months + 1):
+                monthly_return = np.random.normal(monthly_mean, monthly_vol)
+                value = value * (1 + monthly_return) + monthly
+                all_paths[sim, m] = value
+            final_values.append(value)
+
+        final_values = np.array(final_values)
+        total_invested = initial + monthly * months
+
+        # Percentiles
+        p10 = float(np.percentile(final_values, 10))
+        p25 = float(np.percentile(final_values, 25))
+        p50 = float(np.percentile(final_values, 50))
+        p75 = float(np.percentile(final_values, 75))
+        p90 = float(np.percentile(final_values, 90))
+
+        # Median path for chart
+        median_path = []
+        p10_path = []
+        p90_path = []
+        for m in range(months + 1):
+            median_path.append({"month": m, "value": round(float(np.percentile(all_paths[:, m], 50)), 2)})
+            p10_path.append({"month": m, "value": round(float(np.percentile(all_paths[:, m], 10)), 2)})
+            p90_path.append({"month": m, "value": round(float(np.percentile(all_paths[:, m], 90)), 2)})
+
+        # Probability of profit
+        prob_profit = float(np.mean(final_values > total_invested) * 100)
+
+        results = {
+            "total_invested": round(total_invested, 2),
+            "median": round(p50, 2),
+            "p10": round(p10, 2),
+            "p25": round(p25, 2),
+            "p75": round(p75, 2),
+            "p90": round(p90, 2),
+            "median_profit": round(p50 - total_invested, 2),
+            "p10_profit": round(p10 - total_invested, 2),
+            "p90_profit": round(p90 - total_invested, 2),
+            "prob_profit": round(prob_profit, 1),
+            "simulations": n_sims,
+            "annual_vol_pct": round(annual_vol * 100, 1),
+            "median_path": median_path,
+            "p10_path": p10_path,
+            "p90_path": p90_path,
+        }
+        return safe_jsonify({"status": "ok", "data": results})
+    except Exception as e:
+        traceback.print_exc()
+        return safe_jsonify({"status": "error", "message": str(e)}, 500)
+
+
 @app.route("/api/goal")
 def api_goal():
     """Goal calculator: what to invest and where to generate target profit."""
@@ -631,6 +708,19 @@ def api_chat():
         dollar_tickers = re.findall(r'\$([A-Z]{1,10}(?:\.[A-Z]{1,2})?(?:-[A-Z]{1,4})?)', msg_upper)
         for t in dollar_tickers:
             mentioned_tickers.add(t)
+
+        # 3. Match company names → resolve to ticker
+        # e.g., "Micron Technology" → MU, "Tesla" → TSLA, "Apple" → AAPL
+        for ticker, name in STOCK_NAMES.items():
+            name_upper = name.upper()
+            # Match full company name
+            if name_upper in msg_upper:
+                mentioned_tickers.add(ticker)
+                continue
+            # Match first word of company name (if 4+ chars to avoid false positives)
+            first_word = name_upper.split()[0]
+            if len(first_word) >= 4 and re.search(r'\b' + re.escape(first_word) + r'\b', msg_upper):
+                mentioned_tickers.add(ticker)
 
         # 3. Fetch real-time data for mentioned tickers (limit to 5 to avoid slow responses)
         realtime_context = ""

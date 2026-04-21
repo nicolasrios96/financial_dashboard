@@ -1283,7 +1283,59 @@ function renderGoal(d) { const el=document.getElementById('goalResult'),picks=d.
 
 
 
-async function calcCompound() { const i=document.getElementById('compInitial').value||1000,m=document.getElementById('compMonthly').value||200,mo=document.getElementById('compMonths').value||24,rt=document.getElementById('compReturn').value||10,el=document.getElementById('compoundResult'); try{const r=await fetch(`/api/compound?initial=${i}&monthly=${m}&months=${mo}&return=${rt}`);const j=await r.json();if(j.status!=='ok')throw new Error(j.message);const d=j.data,e=d.expected,o=d.optimistic,p=d.pessimistic;el.innerHTML=`<div class="sim-stats" style="margin-top:16px"><div class="sim-stat"><div class="label">Invested</div><div class="value">$${e.total_invested.toLocaleString()}</div></div><div class="sim-stat" style="border-color:var(--green)"><div class="label"> Optimistic</div><div class="value positive">$${o.final_value.toLocaleString()}</div></div><div class="sim-stat" style="border-color:var(--blue)"><div class="label"> Expected</div><div class="value">$${e.final_value.toLocaleString()}</div></div><div class="sim-stat" style="border-color:var(--red)"><div class="label"> Pessimistic</div><div class="value">$${p.final_value.toLocaleString()}</div></div></div>`;}catch(err){el.innerHTML=`<div class="error-msg">${err.message}</div>`;} }
+let compoundMode = 'simple'; // 'simple' or 'montecarlo'
+
+async function calcCompound() {
+ const i=document.getElementById('compInitial').value||1000;
+ const m=document.getElementById('compMonthly').value||200;
+ const mo=document.getElementById('compMonths').value||24;
+ const rt=document.getElementById('compReturn').value||10;
+ const el=document.getElementById('compoundResult');
+
+ if (compoundMode === 'montecarlo') {
+  el.innerHTML='<div class="loading"><div class="spinner"></div><br>Running 1,000 simulations...</div>';
+  try {
+   const r=await fetch(`/api/montecarlo?initial=${i}&monthly=${m}&months=${mo}&return=${rt}`);
+   const j=await r.json();
+   if(j.status!=='ok') throw new Error(j.message);
+   const d=j.data;
+   el.innerHTML=`<div class="sim-stats" style="margin-top:16px">
+    <div class="sim-stat"><div class="label">Invested</div><div class="value">$${d.total_invested.toLocaleString()}</div></div>
+    <div class="sim-stat" style="border-color:var(--green)"><div class="label">🎲 90th %ile</div><div class="value positive">$${d.p90.toLocaleString()}</div><div style="font-size:0.6rem;color:var(--text-tertiary)">Best 10% of outcomes</div></div>
+    <div class="sim-stat" style="border-color:var(--blue)"><div class="label">🎲 Median</div><div class="value">$${d.median.toLocaleString()}</div><div style="font-size:0.6rem;color:var(--text-tertiary)">Most likely outcome</div></div>
+    <div class="sim-stat" style="border-color:var(--red)"><div class="label">🎲 10th %ile</div><div class="value ${d.p10_profit>=0?'positive':'negative'}">$${d.p10.toLocaleString()}</div><div style="font-size:0.6rem;color:var(--text-tertiary)">Worst 10% of outcomes</div></div>
+   </div>
+   <div style="padding:12px 16px;background:var(--bg);border:1px solid var(--border);border-radius:10px;margin-top:12px;font-size:0.8rem;color:var(--text-secondary)">
+    <strong>🎲 Monte Carlo Simulation</strong> — ${d.simulations.toLocaleString()} random scenarios using historical S&P 500 volatility (σ=${d.annual_vol_pct}%/yr).<br>
+    <strong>${d.prob_profit}%</strong> chance of making a profit · Median profit: <strong class="${d.median_profit>=0?'positive':'negative'}">$${d.median_profit.toLocaleString()}</strong> ·
+    Range: <span class="negative">$${d.p10_profit.toLocaleString()}</span> to <span class="positive">+$${d.p90_profit.toLocaleString()}</span>
+   </div>`;
+  } catch(err) { el.innerHTML=`<div class="error-msg">${err.message}</div>`; }
+ } else {
+  try {
+   const r=await fetch(`/api/compound?initial=${i}&monthly=${m}&months=${mo}&return=${rt}`);
+   const j=await r.json();
+   if(j.status!=='ok') throw new Error(j.message);
+   const d=j.data,e=d.expected,o=d.optimistic,p=d.pessimistic;
+   const annRt = parseFloat(rt);
+   el.innerHTML=`<div class="sim-stats" style="margin-top:16px">
+    <div class="sim-stat"><div class="label">Invested</div><div class="value">$${e.total_invested.toLocaleString()}</div></div>
+    <div class="sim-stat" style="border-color:var(--green)"><div class="label">📈 Optimistic</div><div class="value positive">$${o.final_value.toLocaleString()}</div><div style="font-size:0.6rem;color:var(--text-tertiary)">${(annRt*1.5).toFixed(1)}%/yr</div></div>
+    <div class="sim-stat" style="border-color:var(--blue)"><div class="label">📊 Expected</div><div class="value">$${e.final_value.toLocaleString()}</div><div style="font-size:0.6rem;color:var(--text-tertiary)">${annRt.toFixed(1)}%/yr</div></div>
+    <div class="sim-stat" style="border-color:var(--red)"><div class="label">📉 Pessimistic</div><div class="value">$${p.final_value.toLocaleString()}</div><div style="font-size:0.6rem;color:var(--text-tertiary)">${(annRt*0.5).toFixed(1)}%/yr</div></div>
+   </div>
+   <div style="padding:12px 16px;background:var(--bg);border:1px solid var(--border);border-radius:10px;margin-top:12px;font-size:0.8rem;color:var(--text-secondary)">
+    <strong>ℹ️ How scenarios work:</strong> Expected uses your set return (${annRt}%). Optimistic = 1.5× (${(annRt*1.5).toFixed(1)}%). Pessimistic = 0.5× (${(annRt*0.5).toFixed(1)}%). These are simple multipliers showing a range — not guarantees. Try <strong style="color:var(--accent);cursor:pointer" onclick="compoundMode='montecarlo';document.getElementById('mcToggle').classList.add('active');document.getElementById('simpleToggle').classList.remove('active');calcCompound()">🎲 Monte Carlo</strong> for a more realistic simulation.
+   </div>`;
+  } catch(err) { el.innerHTML=`<div class="error-msg">${err.message}</div>`; }
+ }
+}
+
+function setCompoundMode(mode, btn) {
+ compoundMode = mode;
+ document.getElementById('simpleToggle').classList.toggle('active', mode === 'simple');
+ document.getElementById('mcToggle').classList.toggle('active', mode === 'montecarlo');
+}
 
 
 

@@ -132,7 +132,12 @@
                 <input type="number" id="compMonths" value="24" min="1" max="360" step="1" style="width:80px">
                 <label>Return (%):</label>
                 <input type="number" id="compReturn" value="10" min="0" max="100" step="0.5" style="width:80px">
-                <button class="btn" onclick="calcCompound()">Calculate</button>
+            </div>
+            <div style="display:flex;gap:6px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
+                <span style="font-size:0.8rem;color:var(--text-secondary);margin-right:4px">Mode:</span>
+                <button class="strategy-btn active" id="simpleToggle" onclick="setCompoundMode('simple',this)">📊 Simple<span class="strategy-desc">Fixed rates</span></button>
+                <button class="strategy-btn" id="mcToggle" onclick="setCompoundMode('montecarlo',this)">🎲 Monte Carlo<span class="strategy-desc">1,000 sims</span></button>
+                <button class="btn btn-primary" onclick="calcCompound()">Calculate</button>
             </div>
             <div id="compoundResult"></div>
         </div>
