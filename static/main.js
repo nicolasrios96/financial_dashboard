@@ -1261,6 +1261,7 @@ async function analyzePortfolio() {
 
 
  renderPortfolioAnalysis(j.data, intel);
+ renderPortfolioList(); // Re-render hero card with P&L data
 
  } catch(e) { el.innerHTML=`<div class="error-msg"> ${e.message}<br><button class="btn" onclick="analyzePortfolio()"> Retry</button></div>`; }
 
@@ -1275,7 +1276,6 @@ function renderPortfolioAnalysis(d, intel) {
  const sc=d.total_pnl>=0?'green':'red';
 
  lastPortfolioAnalysisData={d:d,intel:intel};
- h+=`<div class="sentiment-bar ${sc}" style="margin-top:20px">${d.summary}<span style="margin-left:auto;font-size:0.85rem">${fmtMoney(d.total_invested)} ${fmtMoney(d.total_current_value)}</span></div>`;
 
  if (d.counts) h+=`<div style="display:flex;gap:12px;margin-bottom:16px"><span class="badge badge-green"> ${d.counts.green}</span><span class="badge badge-yellow"> ${d.counts.yellow}</span><span class="badge badge-red"> ${d.counts.red}</span></div>`;
 

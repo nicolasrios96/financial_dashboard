@@ -1711,6 +1711,7 @@ def analyze_portfolio_holdings(holdings, trade_history=None):
     consolidated = {}
     for h in holdings:
         ticker = h.get("ticker", "").upper().strip()
+        ticker = TICKER_ALIASES.get(ticker, ticker)  # Resolve aliases (XAU -> XAUUSD=X)
         shares = float(h.get("shares", 0))
         buy_price = float(h.get("buy_price", 0))
         buy_date = h.get("buy_date", "")
@@ -2156,14 +2157,15 @@ def calculate_goal(target_profit, months):
 # Stock Search — analyze any ticker on the fly
 # ---------------------------------------------------------------------------
 
+# Ticker aliases for common names (XAU -> XAUUSD=X, etc.)
+TICKER_ALIASES = {"XAU": "XAUUSD=X", "XAG": "XAGUSD=X", "XPT": "XPTUSD=X", "XPD": "XPDUSD=X", "GOLD": "XAUUSD=X", "SILVER": "XAGUSD=X"}
+
 def search_ticker(ticker_str):
     """
     Search and analyze any Yahoo Finance ticker (not limited to the 200 list).
     Downloads 1 year of data for full analysis including 200-day SMA.
     """
     ticker = ticker_str.strip().upper()
-    # Alias mapping for common names
-    TICKER_ALIASES = {"XAU": "XAUUSD=X", "XAG": "XAGUSD=X", "XPT": "XPTUSD=X", "XPD": "XPDUSD=X", "GOLD": "XAUUSD=X", "SILVER": "XAGUSD=X"}
     ticker = TICKER_ALIASES.get(ticker, ticker)
     if not ticker:
         return {"error": "No ticker provided"}
