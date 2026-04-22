@@ -1125,7 +1125,7 @@ function renderPortfolioList() {
   var hasMultiple=g.lots.length>1;
   var expandId='lots_'+t.replace(/[^a-zA-Z0-9]/g,'_');
   h+='<div class="holding-group" style="margin-bottom:6px">';
-  h+='<div class="holding-group-header" '+(hasMultiple?'onclick="toggleLots(''+expandId+'')" style="cursor:pointer"':'style="cursor:default"')+'>';
+  h+='<div class="holding-group-header" '+(hasMultiple?'onclick="toggleLots(\''+expandId+'\')" style="cursor:pointer"':'style="cursor:default"')+'>';
   h+='<div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">';
   if(hasMultiple) h+='<span class="lot-arrow" id="arrow_'+expandId+'">▶</span>';
   else h+='<span style="width:16px"></span>';
