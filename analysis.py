@@ -2162,6 +2162,9 @@ def search_ticker(ticker_str):
     Downloads 1 year of data for full analysis including 200-day SMA.
     """
     ticker = ticker_str.strip().upper()
+    # Alias mapping for common names
+    TICKER_ALIASES = {"XAU": "XAUUSD=X", "XAG": "XAGUSD=X", "XPT": "XPTUSD=X", "XPD": "XPDUSD=X", "GOLD": "XAUUSD=X", "SILVER": "XAGUSD=X"}
+    ticker = TICKER_ALIASES.get(ticker, ticker)
     if not ticker:
         return {"error": "No ticker provided"}
 

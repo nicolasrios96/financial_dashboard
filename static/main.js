@@ -66,7 +66,7 @@ const COMMODITY_ICONS = {'Gold':'','Silver':'','Crude Oil (WTI)':'','Brent Crude
 
 const CRYPTO_ICONS = {'Bitcoin':'','Ethereum':'','Solana':'','Dogecoin':'','Ripple':''};
 // Ticker type detection for badges
-const COMMODITY_TICKERS = ['GLD','SLV','USO','PPLT','DBA','DBC','PDBC','COPX','UNG','WEAT','CORN','CPER','JO','GC=F','SI=F','CL=F','BZ=F','NG=F','HG=F','PL=F','PA=F','ZC=F','ZW=F'];
+const COMMODITY_TICKERS = ['GLD','SLV','USO','PPLT','DBA','DBC','PDBC','COPX','UNG','WEAT','CORN','CPER','JO','GC=F','SI=F','CL=F','BZ=F','NG=F','HG=F','PL=F','PA=F','ZC=F','ZW=F','XAU','XAG','XPT','XPD','XAUUSD=X','XAGUSD=X','XPTUSD=X','XPDUSD=X','GOLD','SILVER'];
 const CRYPTO_TICKERS = ['BTC-USD','ETH-USD','BNB-USD','SOL-USD','XRP-USD','ADA-USD','DOGE-USD','DOT-USD','AVAX-USD','MATIC-USD','LINK-USD','UNI-USD','ATOM-USD','LTC-USD','FIL-USD','NEAR-USD','APT-USD','ARB-USD','OP-USD','SUI-USD','AAVE-USD','MKR-USD','RENDER-USD','INJ-USD','FET-USD','COIN','HOOD'];
 const EU_TICKER_SUFFIXES = ['.AS','.PA','.DE','.MC','.MI','.BR','.L','.CO','.ST','.SW'];
 function getTickerBadge(ticker){
@@ -1117,7 +1117,23 @@ function renderPortfolioList() {
  });
  var totalLots=myPortfolio.length;
  var totalTickers=groupOrder.length;
- let h='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><span style="font-size:0.9rem;font-weight:600">'+totalTickers+' ticker(s) · '+totalLots+' lot(s)</span><button class="btn btn-primary" onclick="analyzePortfolio()"> Analyze</button></div>';
+ // Portfolio hero card
+ var totalInvested=0;
+ groupOrder.forEach(function(t){totalInvested+=groups[t].totalCost;});
+ let h='<div class="portfolio-hero-card">';
+ if(lastPortfolioAnalysisData && lastPortfolioAnalysisData.d){
+  var pa=lastPortfolioAnalysisData.d;
+  var pnlCls=pa.total_pnl>=0?'positive':'negative';
+  h+='<div class="hero-value">'+fmtMoney(pa.total_current_value)+'</div>';
+  h+='<div class="hero-pnl '+pnlCls+'">'+fmtMoneySign(pa.total_pnl)+' &nbsp; '+(pa.total_pnl>=0?'▲':'▼')+' '+Math.abs(pa.total_pnl_pct).toFixed(1)+'%</div>';
+  h+='<div class="hero-invested">Invested: '+fmtMoney(pa.total_invested)+' · '+totalTickers+' ticker(s)</div>';
+ } else {
+  h+='<div class="hero-value">'+fmtMoney(totalInvested)+'</div>';
+  h+='<div class="hero-pnl" style="color:rgba(255,255,255,0.5)">Total invested</div>';
+  h+='<div class="hero-invested" style="opacity:0.7">Click Analyze for live P&L · '+totalTickers+' ticker(s)</div>';
+ }
+ h+='</div>';
+ h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><span style="font-size:0.9rem;font-weight:600">'+totalTickers+' ticker(s) · '+totalLots+' lot(s)</span><button class="btn btn-primary" onclick="analyzePortfolio()"> Analyze</button></div>';
  groupOrder.forEach(function(t){
   var g=groups[t];
   var avgPrice=g.totalCost/g.totalShares;

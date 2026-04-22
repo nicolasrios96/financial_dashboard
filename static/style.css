@@ -776,3 +776,34 @@ body:not(.advanced-mode) .tech-detail { display: none !important; }
     .lots-panel { padding: 6px 8px 8px; }
     .lots-panel td { font-size: 0.72rem; padding: 4px 4px; }
 }
+
+/* ============================================================
+   PORTFOLIO HERO CARD — Revolut-style value display
+   ============================================================ */
+.portfolio-hero-card {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    border-radius: var(--radius); padding: 28px 24px; margin-bottom: 16px;
+    text-align: center; color: #fff; position: relative; overflow: hidden;
+}
+.portfolio-hero-card::before {
+    content: ''; position: absolute; top: -50%; right: -30%; width: 200px; height: 200px;
+    background: radial-gradient(circle, rgba(0,122,255,0.15) 0%, transparent 70%);
+    border-radius: 50%;
+}
+.portfolio-hero-card .hero-value {
+    font-size: 2.4rem; font-weight: 800; letter-spacing: -0.03em;
+    margin-bottom: 6px; text-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+.portfolio-hero-card .hero-pnl {
+    font-size: 1rem; font-weight: 600; margin-bottom: 8px;
+}
+.portfolio-hero-card .hero-pnl.positive { color: #34C759; }
+.portfolio-hero-card .hero-pnl.negative { color: #FF6B6B; }
+.portfolio-hero-card .hero-invested {
+    font-size: 0.8rem; color: rgba(255,255,255,0.6); font-weight: 400;
+}
+@media (max-width: 768px) {
+    .portfolio-hero-card { padding: 20px 16px; }
+    .portfolio-hero-card .hero-value { font-size: 1.8rem; }
+    .portfolio-hero-card .hero-pnl { font-size: 0.85rem; }
+}
