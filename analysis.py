@@ -903,10 +903,12 @@ def get_market_overview():
     for ticker, name in US_INDICES.items():
         df = data.get(ticker)
         if df is not None and len(df) >= 2:
-            close = df["Close"].squeeze()
+            close = df["Close"].squeeze().dropna()
+            if len(close) < 2:
+                continue
             current = float(close.iloc[-1])
             prev = float(close.iloc[-2])
-            change = ((current - prev) / prev) * 100
+            change = ((current - prev) / prev) * 100 if prev else 0
             results["us"].append({
                 "name": name, "ticker": ticker,
                 "price": round(current, 2), "change": round(change, 2),
@@ -915,10 +917,12 @@ def get_market_overview():
     for ticker, name in EU_INDICES.items():
         df = data.get(ticker)
         if df is not None and len(df) >= 2:
-            close = df["Close"].squeeze()
+            close = df["Close"].squeeze().dropna()
+            if len(close) < 2:
+                continue
             current = float(close.iloc[-1])
             prev = float(close.iloc[-2])
-            change = ((current - prev) / prev) * 100
+            change = ((current - prev) / prev) * 100 if prev else 0
             results["eu"].append({
                 "name": name, "ticker": ticker,
                 "price": round(current, 2), "change": round(change, 2),
