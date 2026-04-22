@@ -853,9 +853,19 @@ def analyze_stock(ticker, df):
     name = STOCK_NAMES.get(ticker, ticker)
     daily_change = ((current_price - prev_price) / prev_price) * 100 if prev_price else 0
 
-    # Stop-loss and target price
-    stop_loss = round(current_price * 0.95, 2)  # 5% below
-    target_price = round(current_price * 1.10, 2)  # 10% above
+    # Dynamic stop-loss and target price based on volatility
+    # Calculate annualized volatility from daily returns
+    daily_returns = close.pct_change().dropna()
+    ann_vol = float(daily_returns.std() * (252 ** 0.5)) if len(daily_returns) > 10 else 0.20
+
+    # Quick Flip targets (tighter) vs Long Hold targets (wider)
+    # These will be overridden in get_todays_actions based on strategy_type
+    # Default: use moderate targets scaled by volatility
+    target_pct = max(0.05, min(0.25, ann_vol * 1.0))   # 5% to 25% based on volatility
+    stop_pct = max(0.03, min(0.10, ann_vol * 0.5))      # 3% to 10% based on volatility
+
+    stop_loss = round(current_price * (1 - stop_pct), 2)
+    target_price = round(current_price * (1 + target_pct), 2)
 
     return {
         "ticker": ticker,
