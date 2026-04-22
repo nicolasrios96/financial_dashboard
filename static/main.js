@@ -65,6 +65,18 @@ const COLORS = ['#448aff','#00c853','#ffd600','#ff6d00','#b388ff','#ff1744','#00
 const COMMODITY_ICONS = {'Gold':'','Silver':'','Crude Oil (WTI)':'','Brent Crude':'','Natural Gas':'','Copper':'','Platinum':'','Palladium':'','Corn':'','Wheat':''};
 
 const CRYPTO_ICONS = {'Bitcoin':'','Ethereum':'','Solana':'','Dogecoin':'','Ripple':''};
+// Ticker type detection for badges
+const COMMODITY_TICKERS = ['GLD','SLV','USO','PPLT','DBA','DBC','PDBC','COPX','UNG','WEAT','CORN','CPER','JO','GC=F','SI=F','CL=F','BZ=F','NG=F','HG=F','PL=F','PA=F','ZC=F','ZW=F'];
+const CRYPTO_TICKERS = ['BTC-USD','ETH-USD','BNB-USD','SOL-USD','XRP-USD','ADA-USD','DOGE-USD','DOT-USD','AVAX-USD','MATIC-USD','LINK-USD','UNI-USD','ATOM-USD','LTC-USD','FIL-USD','NEAR-USD','APT-USD','ARB-USD','OP-USD','SUI-USD','AAVE-USD','MKR-USD','RENDER-USD','INJ-USD','FET-USD','COIN','HOOD'];
+const EU_TICKER_SUFFIXES = ['.AS','.PA','.DE','.MC','.MI','.BR','.L','.CO','.ST','.SW'];
+function getTickerBadge(ticker){
+ ticker=ticker.toUpperCase();
+ if(CRYPTO_TICKERS.includes(ticker)||ticker.endsWith('-USD'))return'<span class="badge badge-orange" style="font-size:0.55rem;margin-left:4px">₿ Crypto</span>';
+ if(COMMODITY_TICKERS.includes(ticker)||ticker.endsWith('=F'))return'<span class="badge badge-yellow" style="font-size:0.55rem;margin-left:4px">🏆 Commodity</span>';
+ for(var s of EU_TICKER_SUFFIXES)if(ticker.endsWith(s))return'<span class="badge badge-yellow" style="font-size:0.55rem;margin-left:4px">🇪🇺 EU</span>';
+ return'<span class="badge badge-blue" style="font-size:0.55rem;margin-left:4px">🇺🇸 US</span>';
+}
+
 
 
 
@@ -1092,19 +1104,77 @@ function confirmSell() {
 
 
 function renderPortfolioList() {
-
  const el=document.getElementById('portfolioHoldings');
-
  if (!myPortfolio.length) { el.innerHTML='<div style="text-align:center;padding:20px;color:var(--text-muted)">No holdings yet. Add your first stock above! </div>'; renderTradeHistory(); return; }
-
- let h=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><span style="font-size:0.9rem;font-weight:600">${myPortfolio.length} holding(s)</span><button class="btn btn-primary" onclick="analyzePortfolio()"> Analyze</button></div>`;
-
- h+='<div class="table-wrap"><table><thead><tr><th>Ticker</th><th>Shares</th><th>Buy Price</th><th>Date</th><th>Cost</th><th>Actions</th></tr></thead><tbody>';
-
- myPortfolio.forEach((p,i) => { h+=`<tr><td><strong style="color:var(--accent)">${p.ticker}</strong></td><td>${p.shares}</td><td>${fmtMoney(p.buy_price)}</td><td>${p.buy_date||''}</td><td>${fmtMoney(p.shares*p.buy_price)}</td><td><button class="btn btn-sell" onclick="openSellModal(${i})">💰 Sell</button> <button class="btn btn-danger" onclick="removeHolding(${i})">🗑️</button></td></tr>`; });
-
- h+='</tbody></table></div>'; el.innerHTML=h; renderTradeHistory();
-
+ // Group holdings by ticker
+ var groups={}, groupOrder=[];
+ myPortfolio.forEach(function(p,i){
+  var t=p.ticker.toUpperCase();
+  if(!groups[t]){groups[t]={ticker:t,lots:[],totalShares:0,totalCost:0};groupOrder.push(t);}
+  groups[t].lots.push({idx:i,shares:p.shares,buy_price:p.buy_price,buy_date:p.buy_date||''});
+  groups[t].totalShares+=p.shares;
+  groups[t].totalCost+=p.shares*p.buy_price;
+ });
+ var totalLots=myPortfolio.length;
+ var totalTickers=groupOrder.length;
+ let h='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><span style="font-size:0.9rem;font-weight:600">'+totalTickers+' ticker(s) · '+totalLots+' lot(s)</span><button class="btn btn-primary" onclick="analyzePortfolio()"> Analyze</button></div>';
+ groupOrder.forEach(function(t){
+  var g=groups[t];
+  var avgPrice=g.totalCost/g.totalShares;
+  var badge=getTickerBadge(t);
+  var hasMultiple=g.lots.length>1;
+  var expandId='lots_'+t.replace(/[^a-zA-Z0-9]/g,'_');
+  h+='<div class="holding-group" style="margin-bottom:6px">';
+  h+='<div class="holding-group-header" '+(hasMultiple?'onclick="toggleLots(''+expandId+'')" style="cursor:pointer"':'style="cursor:default"')+'>';
+  h+='<div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">';
+  if(hasMultiple) h+='<span class="lot-arrow" id="arrow_'+expandId+'">▶</span>';
+  else h+='<span style="width:16px"></span>';
+  h+='<strong style="color:var(--accent);font-size:0.95rem">'+t+'</strong>'+badge;
+  h+='<span style="color:var(--text-secondary);font-size:0.8rem;margin-left:8px">'+g.totalShares.toFixed(4)+' shares</span>';
+  h+='</div>';
+  h+='<div style="display:flex;align-items:center;gap:16px">';
+  h+='<span style="font-size:0.8rem;color:var(--text-secondary)">Avg '+fmtMoney(avgPrice)+'</span>';
+  h+='<span style="font-size:0.9rem;font-weight:600">'+fmtMoney(g.totalCost)+'</span>';
+  if(!hasMultiple){
+   var idx=g.lots[0].idx;
+   h+='<button class="btn btn-sell" onclick="event.stopPropagation();openSellModal('+idx+')">💰 Sell</button>';
+   h+='<button class="btn btn-danger" onclick="event.stopPropagation();removeHolding('+idx+')">🗑️</button>';
+  }
+  h+='</div></div>';
+  // Expandable lots panel
+  if(hasMultiple){
+   h+='<div class="lots-panel" id="'+expandId+'" style="display:none">';
+   h+='<table style="width:100%;font-size:0.82rem"><thead><tr><th style="width:30px">#</th><th>Shares</th><th>Buy Price</th><th>Date</th><th>Cost</th><th>Actions</th></tr></thead><tbody>';
+   g.lots.forEach(function(lot,li){
+    h+='<tr><td style="color:var(--text-tertiary)">'+(li+1)+'</td>';
+    h+='<td>'+lot.shares+'</td>';
+    h+='<td>'+fmtMoney(lot.buy_price)+'</td>';
+    h+='<td>'+lot.buy_date+'</td>';
+    h+='<td>'+fmtMoney(lot.shares*lot.buy_price)+'</td>';
+    h+='<td><button class="btn btn-sell" onclick="openSellModal('+lot.idx+')">💰 Sell</button> <button class="btn btn-danger" onclick="removeHolding('+lot.idx+')">🗑️</button></td></tr>';
+   });
+   h+='</tbody></table></div>';
+  }
+  h+='</div>';
+ });
+ el.innerHTML=h; renderTradeHistory();
+}
+function toggleLots(id){
+ var panel=document.getElementById(id);
+ var arrow=document.getElementById('arrow_'+id);
+ if(!panel)return;
+ if(panel.style.display==='none'){
+  panel.style.display='block';
+  panel.style.maxHeight='0';panel.style.overflow='hidden';
+  requestAnimationFrame(function(){panel.style.maxHeight=panel.scrollHeight+'px';});
+  setTimeout(function(){panel.style.maxHeight='none';panel.style.overflow='visible';},300);
+  if(arrow)arrow.textContent='▼';
+ } else {
+  panel.style.maxHeight=panel.scrollHeight+'px';panel.style.overflow='hidden';
+  requestAnimationFrame(function(){panel.style.maxHeight='0';});
+  setTimeout(function(){panel.style.display='none';},300);
+  if(arrow)arrow.textContent='▶';
+ }
 }
 
 

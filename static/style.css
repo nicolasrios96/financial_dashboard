@@ -746,3 +746,33 @@ body:not(.advanced-mode) .tech-detail { display: none !important; }
     .trade-stats-grid { grid-template-columns: repeat(3, 1fr); }
     .crypto-grid { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* ============================================================
+   GROUPED HOLDINGS — Accordion
+   ============================================================ */
+.holding-group {
+    background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    overflow: hidden;
+}
+.holding-group-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 16px; transition: var(--transition); gap: 12px;
+}
+.holding-group-header:hover { background: var(--bg-card-hover); }
+.holding-group .lot-arrow {
+    font-size: 0.7rem; color: var(--text-tertiary); transition: transform 0.2s;
+    width: 16px; text-align: center; flex-shrink: 0;
+}
+.lots-panel {
+    border-top: 1px solid var(--border); background: var(--bg-card);
+    padding: 8px 16px 12px; transition: max-height 0.3s ease;
+}
+.lots-panel table { margin: 0; }
+.lots-panel th { font-size: 0.6rem; padding: 4px 8px; }
+.lots-panel td { font-size: 0.8rem; padding: 6px 8px; }
+@media (max-width: 768px) {
+    .holding-group-header { padding: 10px 10px; gap: 6px; flex-wrap: wrap; }
+    .holding-group-header > div:first-child { flex-basis: 100%; }
+    .lots-panel { padding: 6px 8px 8px; }
+    .lots-panel td { font-size: 0.72rem; padding: 4px 4px; }
+}
