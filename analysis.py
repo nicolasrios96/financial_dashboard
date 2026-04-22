@@ -2158,7 +2158,7 @@ def calculate_goal(target_profit, months):
 # ---------------------------------------------------------------------------
 
 # Ticker aliases for common names (XAU -> XAUUSD=X, etc.)
-TICKER_ALIASES = {"XAU": "XAUUSD=X", "XAG": "XAGUSD=X", "XPT": "XPTUSD=X", "XPD": "XPDUSD=X", "GOLD": "XAUUSD=X", "SILVER": "XAGUSD=X"}
+TICKER_ALIASES = {"XAU": "GC=F", "XAG": "SI=F", "XPT": "PL=F", "XPD": "PA=F", "GOLD": "GC=F", "SILVER": "SI=F", "XAUUSD=X": "GC=F", "XAGUSD=X": "SI=F", "XPTUSD=X": "PL=F", "XPDUSD=X": "PA=F"}
 
 def search_ticker(ticker_str):
     """
