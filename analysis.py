@@ -208,6 +208,15 @@ STOCK_NAMES = {
     "SOXX": "iShares Semiconductor", "HACK": "ETFMG Prime Cyber Security",
     "BOTZ": "Global X Robotics & AI", "LIT": "Global X Lithium & Battery",
     "TAN": "Invesco Solar ETF", "ICLN": "iShares Global Clean Energy",
+    # ===== EU-Domiciled ETFs (popular on Revolut/IBKR in Europe) =====
+    "VUAA.L": "Vanguard S&P 500 UCITS ETF", "VWCE.DE": "Vanguard FTSE All-World UCITS ETF",
+    "CSPX.L": "iShares Core S&P 500 UCITS ETF", "IUSA.L": "iShares S&P 500 UCITS ETF",
+    "EUNL.DE": "iShares Core MSCI World UCITS ETF", "IWDA.L": "iShares Core MSCI World UCITS ETF",
+    "VUSA.L": "Vanguard S&P 500 UCITS ETF (Dist)", "VWRL.L": "Vanguard FTSE All-World UCITS ETF (Dist)",
+    "SWDA.L": "iShares Core MSCI World UCITS ETF", "EMIM.L": "iShares Core MSCI EM UCITS ETF",
+    "VUAG.L": "Vanguard S&P 500 UCITS ETF (GBP)", "VHYL.L": "Vanguard FTSE All-World High Div UCITS ETF",
+    "ISAC.L": "iShares MSCI ACWI UCITS ETF", "AGGH.L": "iShares Core Global Aggregate Bond UCITS ETF",
+    "SXR8.DE": "iShares Core S&P 500 UCITS ETF (EUR)", "EQQQ.L": "Invesco NASDAQ-100 UCITS ETF",
 }
 
 # ---------------------------------------------------------------------------
@@ -722,8 +731,11 @@ def analyze_stock(ticker, df):
     if df is None or len(df) < 30:
         return None
 
-    close = df["Close"].squeeze()
-    volume = df["Volume"].squeeze()
+    close = df["Close"].squeeze().dropna()
+    volume = df["Volume"].squeeze().dropna()
+
+    if len(close) < 10:
+        return None
 
     current_price = float(close.iloc[-1])
     prev_price = float(close.iloc[-2]) if len(close) > 1 else current_price
@@ -1695,7 +1707,31 @@ def analyze_portfolio_holdings(holdings, trade_history=None):
     trade_history: list of closed trades for pattern analysis
     Returns analysis with P&L, advice (buy more / hold / sell), and current status.
     """
-    tickers = list(set(h.get("ticker", "").upper().strip() for h in holdings if h.get("ticker")))
+    # --- CONSOLIDATE same-ticker holdings into one entry ---
+    consolidated = {}
+    for h in holdings:
+        ticker = h.get("ticker", "").upper().strip()
+        shares = float(h.get("shares", 0))
+        buy_price = float(h.get("buy_price", 0))
+        buy_date = h.get("buy_date", "")
+        if not ticker or shares <= 0 or buy_price <= 0:
+            continue
+        if ticker in consolidated:
+            c = consolidated[ticker]
+            # Weighted average buy price
+            total_cost = c["shares"] * c["buy_price"] + shares * buy_price
+            c["shares"] += shares
+            c["buy_price"] = round(total_cost / c["shares"], 2)
+            # Use earliest buy date
+            if buy_date and (not c["buy_date"] or buy_date < c["buy_date"]):
+                c["buy_date"] = buy_date
+            c["num_lots"] = c.get("num_lots", 1) + 1
+        else:
+            consolidated[ticker] = {"ticker": ticker, "shares": shares, "buy_price": buy_price, "buy_date": buy_date, "num_lots": 1}
+
+    merged_holdings = list(consolidated.values())
+
+    tickers = list(set(h["ticker"] for h in merged_holdings))
     if not tickers:
         return {"holdings": [], "summary": "No valid tickers provided"}
 
@@ -1705,14 +1741,12 @@ def analyze_portfolio_holdings(holdings, trade_history=None):
     total_invested = 0
     total_current_value = 0
 
-    for h in holdings:
-        ticker = h.get("ticker", "").upper().strip()
-        shares = float(h.get("shares", 0))
-        buy_price = float(h.get("buy_price", 0))
+    for h in merged_holdings:
+        ticker = h["ticker"]
+        shares = h["shares"]
+        buy_price = h["buy_price"]
         buy_date = h.get("buy_date", "")
-
-        if not ticker or shares <= 0 or buy_price <= 0:
-            continue
+        num_lots = h.get("num_lots", 1)
 
         cost_basis = round(shares * buy_price, 2)
         total_invested += cost_basis

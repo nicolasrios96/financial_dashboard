@@ -332,7 +332,7 @@ function renderSearchResult(d) {
 
  <div class="stock-price">
 
- <div class="price">$${d.price}</div>
+ <div class="price">${d.price != null ? '$' + d.price : '🔒 Market Closed'}</div>
 
  <div class="${cc(d.daily_change)}" style="font-size:0.9rem;font-weight:600">${ci(d.daily_change)} ${fc(d.daily_change)}</div>
 
