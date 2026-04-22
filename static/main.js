@@ -25,6 +25,17 @@ let chatOpen = false;
 let searchTimeout = null;
 
 let aiAvailable = false;
+let currencyMode = localStorage.getItem('currency') || 'USD';
+let eurRate = parseFloat(localStorage.getItem('eurRate')) || 0.92;
+
+// Fetch EUR/USD rate on load
+fetch('/api/search?ticker=EURUSD%3DX').then(r=>r.json()).then(j=>{
+ if(j.status==='ok'&&j.data&&j.data.price){eurRate=round2(1/j.data.price);localStorage.setItem('eurRate',eurRate);}
+}).catch(()=>{});
+function round2(v){return Math.round(v*100)/100;}
+function fmtMoney(v){if(v==null)return'?';v=parseFloat(v);if(currencyMode==='EUR')return'€'+round2(v*eurRate).toLocaleString();return'$'+v.toLocaleString();}
+function toggleCurrency(){currencyMode=currencyMode==='USD'?'EUR':'USD';localStorage.setItem('currency',currencyMode);document.getElementById('currencyToggle').textContent=currencyMode==='USD'?'$ USD':'€ EUR';showToast(currencyMode==='EUR'?'Showing EUR (rate: '+eurRate+')':'Showing USD','info');if(lastActionsData)renderActions(lastActionsData);}
+(function initCurrency(){document.getElementById('currencyToggle').textContent=currencyMode==='USD'?'$ USD':'€ EUR';})();
 
 const COLORS = ['#448aff','#00c853','#ffd600','#ff6d00','#b388ff','#ff1744','#00bcd4','#8bc34a','#e91e63','#9c27b0','#009688','#ff5722'];
 

@@ -20,6 +20,7 @@
         <div class="header-actions">
             <span class="last-updated" id="lastUpdated"></span>
             <button class="btn mode-toggle" id="modeToggle" onclick="toggleSimpleMode()" title="Toggle Simple/Advanced mode">🎓 Simple</button>
+            <button class="btn" id="currencyToggle" onclick="toggleCurrency()" title="Toggle USD/EUR" style="font-size:0.7rem;padding:5px 8px">$ USD</button>
             <button class="btn" onclick="refreshAll()">🔄</button>
         </div>
     </div>
@@ -283,7 +284,7 @@
         <button onclick="sendQuickPrompt('Compare NVDA vs AMD — which is the better buy right now?')">⚔️ Compare</button>
     </div>
     <div id="chatMessages" class="chat-messages">
-        <div class="chat-msg ai">👋 Hey, I'm Marcus — your portfolio strategist. I have live access to 500+ stocks, your portfolio data, and current market conditions. Ask me anything specific — the more detail you give, the better my analysis. Try the prompts above or just ask!</div>
+        <div class="chat-msg ai">📈 Yo, I'm Stonks — your portfolio strategist who actually knows what he's talking about. I have live access to 500+ stocks, your portfolio data, and current market conditions. Stonks only go up... just kidding, that's why I'm here to help. Ask me anything! 🚀</div>
     </div>
     <div class="chat-input-area">
         <input type="text" id="chatInput" placeholder="Ask about stocks, portfolio, market..." onkeydown="if(event.key==='Enter')sendChat()">
