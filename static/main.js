@@ -33,8 +33,31 @@ fetch('/api/search?ticker=EURUSD%3DX').then(r=>r.json()).then(j=>{
  if(j.status==='ok'&&j.data&&j.data.price){eurRate=round2(1/j.data.price);localStorage.setItem('eurRate',eurRate);}
 }).catch(()=>{});
 function round2(v){return Math.round(v*100)/100;}
-function fmtMoney(v){if(v==null)return'?';v=parseFloat(v);if(currencyMode==='EUR')return'€'+round2(v*eurRate).toLocaleString();return'$'+v.toLocaleString();}
-function toggleCurrency(){currencyMode=currencyMode==='USD'?'EUR':'USD';localStorage.setItem('currency',currencyMode);document.getElementById('currencyToggle').textContent=currencyMode==='USD'?'$ USD':'€ EUR';showToast(currencyMode==='EUR'?'Showing EUR (rate: '+eurRate+')':'Showing USD','info');if(lastActionsData)renderActions(lastActionsData);}
+function fmtMoney(v){if(v==null)return'?';v=parseFloat(v);if(isNaN(v))return'?';if(currencyMode==='EUR')return'€'+round2(v*eurRate).toLocaleString();return'$'+v.toLocaleString();}
+function fmtMoneySign(v){if(v==null)return'?';v=parseFloat(v);if(isNaN(v))return'?';var sign=v>=0?'+':'';if(currencyMode==='EUR')return sign+'€'+round2(Math.abs(v)*eurRate).toLocaleString();return sign+'$'+Math.abs(v).toLocaleString();}
+function fmtSymbol(){return currencyMode==='EUR'?'€':'$';}
+function toDisplayVal(v){if(v==null)return v;v=parseFloat(v);if(isNaN(v))return v;return currencyMode==='EUR'?round2(v*eurRate):v;}
+function toggleCurrency(){
+ currencyMode=currencyMode==='USD'?'EUR':'USD';
+ localStorage.setItem('currency',currencyMode);
+ document.getElementById('currencyToggle').textContent=currencyMode==='USD'?'$ USD':'€ EUR';
+ updateCurrencyLabels();
+ showToast(currencyMode==='EUR'?'Showing EUR (rate: '+eurRate+')':'Showing USD','info');
+ // Re-render all loaded sections
+ if(lastActionsData)renderActions(lastActionsData);
+ renderPortfolioList();
+ if(lastPortfolioAnalysisData)renderPortfolioAnalysis(lastPortfolioAnalysisData.d,lastPortfolioAnalysisData.intel);
+ if(lastTradeHistoryRendered)renderTradeHistory();
+ if(lastGoalData)renderGoal(lastGoalData);
+ if(lastCompoundHtml)calcCompoundRedraw();
+ if(lastPortfolioTabData)renderPortfolio(lastPortfolioTabData);
+ if(dataLoaded['market'])reRenderMarket();
+ if(dataLoaded['commodities'])reRenderCommodities();
+}
+function updateCurrencyLabels(){
+ var sym=fmtSymbol();
+ document.querySelectorAll('.currency-label').forEach(function(el){el.textContent=sym;});
+}
 (function initCurrency(){document.getElementById('currencyToggle').textContent=currencyMode==='USD'?'$ USD':'€ EUR';})();
 
 const COLORS = ['#448aff','#00c853','#ffd600','#ff6d00','#b388ff','#ff1744','#00bcd4','#8bc34a','#e91e63','#9c27b0','#009688','#ff5722'];
@@ -94,6 +117,16 @@ function saveSettings() {
 // Store last fetched data for re-rendering on mode switch
 
 let lastActionsData = null;
+let lastPortfolioAnalysisData = null;
+let lastTradeHistoryRendered = false;
+let lastGoalData = null;
+let lastCompoundHtml = null;
+let lastCompoundData = null;
+let lastPortfolioTabData = null;
+let lastMarketData = null;
+let lastMoversData = null;
+let lastCommoditiesData = null;
+let lastCryptoData = null;
 
 
 
@@ -333,7 +366,7 @@ function renderSearchResult(d) {
 
  ${d.pct_3m != null ? `<div class="metric">3M: <strong class="${cc(d.pct_3m)}">${fc(d.pct_3m)}</strong></div>` : ''}
 
- ${d.sma_200 ? `<div class="metric">SMA200: <strong>$${d.sma_200}</strong></div>` : ''}
+ ${d.sma_200 ? `<div class="metric">SMA200: <strong>${fmtMoney(d.sma_200)}</strong></div>` : ''}
 
  <div class="metric">From High: <strong class="${cc(d.pct_from_high)}">${fc(d.pct_from_high)}</strong></div>
 
@@ -343,13 +376,13 @@ function renderSearchResult(d) {
 
  <div class="stock-price">
 
- <div class="price">${d.price != null ? '$' + d.price : '🔒 Market Closed'}</div>
+ <div class="price">${d.price != null ? fmtMoney(d.price) : '🔒 Market Closed'}</div>
 
  <div class="${cc(d.daily_change)}" style="font-size:0.9rem;font-weight:600">${ci(d.daily_change)} ${fc(d.daily_change)}</div>
 
  <div style="font-size:0.75rem;color:var(--text-muted);margin-top:4px">
 
- $${d.target_price}<br> $${d.stop_loss}
+ ${fmtMoney(d.target_price)}<br> ${fmtMoney(d.stop_loss)}
 
  </div>
 
@@ -877,7 +910,7 @@ function renderActions(d) {
 
  <strong>${regimeIcons[mr.regime]||''} Market: ${mr.regime.toUpperCase()}</strong> ${mr.description}
 
- <span style="margin-left:auto;font-size:0.75rem">S&P 500: $${mr.sp500_price} (${mr.sp500_1m>=0?'+':''}${mr.sp500_1m}% 1M)</span>
+ <span style="margin-left:auto;font-size:0.75rem">S&P 500: ${fmtMoney(mr.sp500_price)} (${mr.sp500_1m>=0?'+':''}${mr.sp500_1m}% 1M)</span>
 
  </div>`;
 
@@ -885,7 +918,7 @@ function renderActions(d) {
 
  }
 
- h += `<div class="sentiment-bar ${d.sentiment.color}"><strong>${d.sentiment.label}</strong> ${d.sentiment.desc}<span style="margin-left:auto;font-size:0.8rem">${d.strategy_label} $${d.investment.toLocaleString()}</span></div>`;
+ h += `<div class="sentiment-bar ${d.sentiment.color}"><strong>${d.sentiment.label}</strong> ${d.sentiment.desc}<span style="margin-left:auto;font-size:0.8rem">${d.strategy_label} ${fmtMoney(d.investment)}</span></div>`;
  if (d.fallback_note) h += `<div style="padding:10px 16px;background:var(--yellow-bg);border:1px solid rgba(255,214,0,0.3);border-radius:8px;margin-bottom:12px;font-size:0.8rem;color:var(--yellow)">${d.fallback_note}</div>`;
 
  if (d.actions.length > 0) {
@@ -916,7 +949,7 @@ function renderActions(d) {
 
  <span>${urgencyBadge(a.urgency)}</span>
 
- <span>$${a.price}/share</span>
+ <span>${fmtMoney(a.price)}/share</span>
 
  ${!sm ? `<span style="color:var(--text-muted)">Score: ${a.score} RSI: ${a.rsi}</span>` : ''}
 
@@ -928,11 +961,11 @@ function renderActions(d) {
 
  <div class="action-numbers">
 
- <div class="invest-amt">$${a.invest_amount.toLocaleString()}</div>
+ <div class="invest-amt">${fmtMoney(a.invest_amount)}</div>
 
  <div class="shares">${a.shares.toFixed(4)} shares</div>
 
- ${!sm ? `<div class="targets"><span class="target-up"> $${a.target_price} (+${a.potential_gain_pct}%)</span><span class="target-down"> $${a.stop_loss} (${a.potential_loss_pct}%)</span></div>` : `<div style="font-size:0.8rem;color:var(--green);margin-top:4px">Potential: +${a.potential_gain_pct}%</div>`}
+ ${!sm ? `<div class="targets"><span class="target-up"> ${fmtMoney(a.target_price)} (+${a.potential_gain_pct}%)</span><span class="target-down"> ${fmtMoney(a.stop_loss)} (${a.potential_loss_pct}%)</span></div>` : `<div style="font-size:0.8rem;color:var(--green);margin-top:4px">Potential: +${a.potential_gain_pct}%</div>`}
 
  </div>
 
@@ -972,7 +1005,7 @@ function renderActions(d) {
 
  </div>
 
- <div class="action-numbers"><div style="font-size:1rem;color:var(--text-muted)">$${s.price}</div></div>
+ <div class="action-numbers"><div style="font-size:1rem;color:var(--text-muted)">${fmtMoney(s.price)}</div></div>
 
  </div>`;
 
@@ -980,7 +1013,7 @@ function renderActions(d) {
 
  }
 
- if (d.cash_remaining > 0.01) h += `<div style="padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:10px;font-size:0.85rem;color:var(--text-muted);margin-top:12px"> Cash remaining: <strong style="color:var(--text)">$${d.cash_remaining.toLocaleString()}</strong></div>`;
+ if (d.cash_remaining > 0.01) h += `<div style="padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:10px;font-size:0.85rem;color:var(--text-muted);margin-top:12px"> Cash remaining: <strong style="color:var(--text)">${fmtMoney(d.cash_remaining)}</strong></div>`;
 
  el.innerHTML = h;
 
@@ -1068,7 +1101,7 @@ function renderPortfolioList() {
 
  h+='<div class="table-wrap"><table><thead><tr><th>Ticker</th><th>Shares</th><th>Buy Price</th><th>Date</th><th>Cost</th><th>Actions</th></tr></thead><tbody>';
 
- myPortfolio.forEach((p,i) => { h+=`<tr><td><strong style="color:var(--accent)">${p.ticker}</strong></td><td>${p.shares}</td><td>$${p.buy_price.toFixed(2)}</td><td>${p.buy_date||''}</td><td>$${(p.shares*p.buy_price).toFixed(2)}</td><td><button class="btn btn-sell" onclick="openSellModal(${i})"> Sell</button> <button class="btn btn-danger" onclick="removeHolding(${i})"></button></td></tr>`; });
+ myPortfolio.forEach((p,i) => { h+=`<tr><td><strong style="color:var(--accent)">${p.ticker}</strong></td><td>${p.shares}</td><td>${fmtMoney(p.buy_price)}</td><td>${p.buy_date||''}</td><td>${fmtMoney(p.shares*p.buy_price)}</td><td><button class="btn btn-sell" onclick="openSellModal(${i})">💰 Sell</button> <button class="btn btn-danger" onclick="removeHolding(${i})">🗑️</button></td></tr>`; });
 
  h+='</tbody></table></div>'; el.innerHTML=h; renderTradeHistory();
 
@@ -1090,11 +1123,12 @@ function renderTradeHistory() {
 
  const tot=w+l,wr=tot>0?((w/tot)*100).toFixed(1):0,net=tp+tl;
 
- h+=`<div class="trade-stats-grid"><div class="trade-stat"><div class="label">Trades</div><div class="value">${tot}</div></div><div class="trade-stat"><div class="label">Win Rate</div><div class="value ${parseFloat(wr)>=50?'positive':'negative'}">${wr}%</div></div><div class="trade-stat"><div class="label">Wins</div><div class="value positive">${w}</div></div><div class="trade-stat"><div class="label">Losses</div><div class="value negative">${l}</div></div><div class="trade-stat" style="border-color:${net>=0?'var(--green)':'var(--red)'}"><div class="label">Net P&L</div><div class="value ${net>=0?'positive':'negative'}">${net>=0?'+':''}$${net.toFixed(2)}</div></div></div>`;
+ h+=`<div class="trade-stats-grid"><div class="trade-stat"><div class="label">Trades</div><div class="value">${tot}</div></div><div class="trade-stat"><div class="label">Win Rate</div><div class="value ${parseFloat(wr)>=50?'positive':'negative'}">${wr}%</div></div><div class="trade-stat"><div class="label">Wins</div><div class="value positive">${w}</div></div><div class="trade-stat"><div class="label">Losses</div><div class="value negative">${l}</div></div><div class="trade-stat" style="border-color:${net>=0?'var(--green)':'var(--red)'}"><div class="label">Net P&L</div><div class="value ${net>=0?'positive':'negative'}">${fmtMoneySign(net)}</div></div></div>`;
 
  h+='<div class="table-wrap"><table><thead><tr><th>Ticker</th><th>Shares</th><th>Buy</th><th>Sell</th><th>P&L</th><th>%</th><th>Days</th><th></th></tr></thead><tbody>';
 
- trades.slice().reverse().forEach((t,ri)=>{const i=trades.length-1-ri;const pc=t.pnl>=0?'positive':'negative';const ps=t.pnl>=0?'+':'';h+=`<tr><td><strong>${t.ticker}</strong></td><td>${t.shares}</td><td>$${t.buy_price.toFixed(2)}</td><td>$${t.sell_price.toFixed(2)}</td><td class="${pc}" style="font-weight:700">${ps}$${Math.abs(t.pnl).toFixed(2)}</td><td class="${pc}">${ps}${t.pnlPct.toFixed(1)}%</td><td>${t.daysHeld!=null?t.daysHeld+'d':'?'}</td><td><button class="btn btn-danger" onclick="removeTrade(${i})"></button></td></tr>`;});
+ trades.slice().reverse().forEach((t,ri)=>{const i=trades.length-1-ri;const pc=t.pnl>=0?'positive':'negative';const ps=t.pnl>=0?'+':'';h+=`<tr><td><strong>${t.ticker}</strong></td><td>${t.shares}</td><td>${fmtMoney(t.buy_price)}</td><td>${fmtMoney(t.sell_price)}</td><td class="${pc}" style="font-weight:700">${fmtMoneySign(t.pnl)}</td><td class="${pc}">${ps}${t.pnlPct.toFixed(1)}%</td><td>${t.daysHeld!=null?t.daysHeld+'d':'?'}</td><td><button class="btn btn-danger" onclick="removeTrade(${i})">🗑️</button></td></tr>`;});
+ lastTradeHistoryRendered=true;
 
  h+='</tbody></table></div><div style="margin-top:8px;text-align:right"><button class="btn btn-danger" onclick="clearTradeHistory()" style="font-size:0.8rem"> Clear History</button></div>';
 
@@ -1154,7 +1188,8 @@ function renderPortfolioAnalysis(d, intel) {
 
  const sc=d.total_pnl>=0?'green':'red';
 
- h+=`<div class="sentiment-bar ${sc}" style="margin-top:20px">${d.summary}<span style="margin-left:auto;font-size:0.85rem">$${d.total_invested.toLocaleString()} $${d.total_current_value.toLocaleString()}</span></div>`;
+ lastPortfolioAnalysisData={d:d,intel:intel};
+ h+=`<div class="sentiment-bar ${sc}" style="margin-top:20px">${d.summary}<span style="margin-left:auto;font-size:0.85rem">${fmtMoney(d.total_invested)} ${fmtMoney(d.total_current_value)}</span></div>`;
 
  if (d.counts) h+=`<div style="display:flex;gap:12px;margin-bottom:16px"><span class="badge badge-green"> ${d.counts.green}</span><span class="badge badge-yellow"> ${d.counts.yellow}</span><span class="badge badge-red"> ${d.counts.red}</span></div>`;
 
@@ -1224,7 +1259,7 @@ function renderPortfolioAnalysis(d, intel) {
 
  if (d.trade_stats) { const ts=d.trade_stats; h+=`<div style="margin-bottom:16px"><div style="font-size:0.9rem;font-weight:600;margin-bottom:8px"> Trading Insights</div>`; if(ts.insights)ts.insights.forEach(i=>{h+=`<div class="insight-card">${i}</div>`;}); if(ts.best_trade)h+=`<div style="display:flex;gap:12px;margin-top:8px;font-size:0.8rem;color:var(--text-muted)"><span> Best: <strong class="positive">${ts.best_trade.ticker} +${ts.best_trade.pnl_pct}%</strong></span><span> Worst: <strong class="negative">${ts.worst_trade.ticker} ${ts.worst_trade.pnl_pct}%</strong></span></div>`; h+=`</div>`; }
 
- d.holdings.forEach(h2=>{const pc=(h2.pnl||0)>=0?'positive':'negative';const ps=(h2.pnl||0)>=0?'+':'';h+=`<div class="holding-card" style="border-left:4px solid var(--${h2.status==='green'?'green':h2.status==='red'?'red':h2.status==='yellow'?'yellow':'border'})"><div class="status-dot ${h2.status}"></div><div class="info"><h4><strong style="color:var(--accent)">${h2.ticker}</strong> ${h2.name} <span style="font-size:0.75rem;color:var(--text-muted)">${h2.status_label}</span>${h2.days_held!=null?` <span style="font-size:0.7rem;color:var(--text-muted)"> ${h2.days_label}</span>`:''}</h4><div class="advice"> ${h2.advice}</div><div style="font-size:0.75rem;color:var(--text-muted);margin-top:4px">${h2.shares} shares $${h2.buy_price} $${h2.current_price||'?'}</div></div><div class="price-info" style="min-width:140px">${h2.pnl!=null?`<div class="${pc}" style="font-size:1.2rem;font-weight:700">${ps}$${Math.abs(h2.pnl).toLocaleString()}</div><div class="${pc}" style="font-size:0.85rem">${ps}${h2.pnl_pct}%</div>`:'<div style="color:var(--text-muted)">No data</div>'}</div></div>`;});
+ d.holdings.forEach(h2=>{const pc=(h2.pnl||0)>=0?'positive':'negative';const ps=(h2.pnl||0)>=0?'+':'';h+=`<div class="holding-card" style="border-left:4px solid var(--${h2.status==='green'?'green':h2.status==='red'?'red':h2.status==='yellow'?'yellow':'border'})"><div class="status-dot ${h2.status}"></div><div class="info"><h4><strong style="color:var(--accent)">${h2.ticker}</strong> ${h2.name} <span style="font-size:0.75rem;color:var(--text-muted)">${h2.status_label}</span>${h2.days_held!=null?` <span style="font-size:0.7rem;color:var(--text-muted)"> ${h2.days_label}</span>`:''}</h4><div class="advice"> ${h2.advice}</div><div style="font-size:0.75rem;color:var(--text-muted);margin-top:4px">${h2.shares} shares ${fmtMoney(h2.buy_price)} ${fmtMoney(h2.current_price)}</div></div><div class="price-info" style="min-width:140px">${h2.pnl!=null?`<div class="${pc}" style="font-size:1.2rem;font-weight:700">${fmtMoneySign(h2.pnl)}</div><div class="${pc}" style="font-size:0.85rem">${ps}${h2.pnl_pct}%</div>`:'<div style="color:var(--text-muted)">No data</div>'}</div></div>`;});
 
  el.innerHTML=h;
 
@@ -1335,7 +1370,7 @@ async function syncFromServer() { try{const r=await fetch('/api/portfolio-data')
 
 async function calcGoal() { const g=document.getElementById('goalAmount').value||200,m=document.getElementById('goalMonths').value||1,el=document.getElementById('goalResult'); el.innerHTML='<div class="loading"><div class="spinner"></div><br>Scanning 500+ stocks...</div>'; try{const r=await fetch(`/api/goal?goal=${g}&months=${m}`);const j=await r.json();if(j.status!=='ok')throw new Error(j.message);renderGoal(j.data);}catch(e){el.innerHTML=`<div class="error-msg"> ${e.message}<br><button class="btn" onclick="calcGoal()"> Retry</button></div>`;} }
 
-function renderGoal(d) { const el=document.getElementById('goalResult'),picks=d.picks; if(!picks?.length){el.innerHTML='<div class="error-msg">No stocks found.</div>';return;} let h=`<div style="padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:10px;font-size:0.9rem;margin:16px 0"> To make <strong style="color:var(--green)">$${parseFloat(d.target_profit).toLocaleString()}</strong> in <strong>${d.months} month(s)</strong>:</div>`; const top3=picks.slice(0,3),ranks=[' Best',' Second',' Third']; h+='<div class="grid-3">'; top3.forEach((p,i)=>{const fb=p.feasibility_color==='green'?'badge-green':p.feasibility_color==='red'?'badge-red':'badge-yellow';h+=`<div class="goal-card" ${i===0?'style="border-color:var(--accent)"':''}><div class="rank">${ranks[i]}</div><div class="ticker-name"><span class="ticker">${p.ticker}</span> ${p.is_etf?'<span class="badge badge-blue" style="font-size:0.6rem">ETF</span>':''}</div><div style="color:var(--text-muted);font-size:0.85rem">${p.name}</div><div class="invest-big">$${p.investment_needed.toLocaleString()}</div><div style="font-size:0.8rem;color:var(--text-muted)">at $${p.price}/share</div><div class="scenarios"><div class="scenario"><div class="positive"> +$${p.optimistic_profit.toLocaleString()}</div><div style="color:var(--text-muted)">Best</div></div><div class="scenario"><div style="color:var(--blue)"> +$${p.expected_profit.toLocaleString()}</div><div style="color:var(--text-muted)">Expected</div></div><div class="scenario"><div class="${p.pessimistic_profit>=0?'positive':'negative'}"> ${p.pessimistic_profit>=0?'+':''}$${p.pessimistic_profit.toLocaleString()}</div><div style="color:var(--text-muted)">Worst</div></div></div><div style="margin-top:12px"><span class="badge ${fb}">${p.feasibility}</span></div></div>`;}); h+='</div>'; if(picks.length>3){h+=`<details style="margin-top:16px"><summary style="cursor:pointer;color:var(--accent);font-size:0.9rem"> ${picks.length-3} more...</summary><div class="table-wrap" style="margin-top:12px"><table><thead><tr><th>#</th><th>Stock</th><th>Price</th><th>Invest</th><th>Expected</th><th>Feasibility</th></tr></thead><tbody>`;picks.slice(3).forEach((p,i)=>{const fb=p.feasibility_color==='green'?'badge-green':'badge-yellow';h+=`<tr><td>${i+4}</td><td><strong>${p.ticker}</strong><br><span style="font-size:0.7rem;color:var(--text-muted)">${p.name}</span></td><td>$${p.price}</td><td style="font-weight:700;color:var(--accent)">$${p.investment_needed.toLocaleString()}</td><td style="color:var(--blue)">+$${p.expected_profit}</td><td><span class="badge ${fb}">${p.feasibility}</span></td></tr>`;});h+='</tbody></table></div></details>';} el.innerHTML=h; }
+function renderGoal(d) { lastGoalData=d; const el=document.getElementById('goalResult'),picks=d.picks; if(!picks?.length){el.innerHTML='<div class="error-msg">No stocks found.</div>';return;} let h=`<div style="padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:10px;font-size:0.9rem;margin:16px 0"> To make <strong style="color:var(--green)">${fmtMoney(parseFloat(d.target_profit))}</strong> in <strong>${d.months} month(s)</strong>:</div>`; const top3=picks.slice(0,3),ranks=[' Best',' Second',' Third']; h+='<div class="grid-3">'; top3.forEach((p,i)=>{const fb=p.feasibility_color==='green'?'badge-green':p.feasibility_color==='red'?'badge-red':'badge-yellow';h+=`<div class="goal-card" ${i===0?'style="border-color:var(--accent)"':''}><div class="rank">${ranks[i]}</div><div class="ticker-name"><span class="ticker">${p.ticker}</span> ${p.is_etf?'<span class="badge badge-blue" style="font-size:0.6rem">ETF</span>':''}</div><div style="color:var(--text-muted);font-size:0.85rem">${p.name}</div><div class="invest-big">${fmtMoney(p.investment_needed)}</div><div style="font-size:0.8rem;color:var(--text-muted)">at ${fmtMoney(p.price)}/share</div><div class="scenarios"><div class="scenario"><div class="positive"> +${fmtMoney(p.optimistic_profit)}</div><div style="color:var(--text-muted)">Best</div></div><div class="scenario"><div style="color:var(--blue)"> +${fmtMoney(p.expected_profit)}</div><div style="color:var(--text-muted)">Expected</div></div><div class="scenario"><div class="${p.pessimistic_profit>=0?'positive':'negative'}"> ${fmtMoneySign(p.pessimistic_profit)}</div><div style="color:var(--text-muted)">Worst</div></div></div><div style="margin-top:12px"><span class="badge ${fb}">${p.feasibility}</span></div></div>`;}); h+='</div>'; if(picks.length>3){h+=`<details style="margin-top:16px"><summary style="cursor:pointer;color:var(--accent);font-size:0.9rem"> ${picks.length-3} more...</summary><div class="table-wrap" style="margin-top:12px"><table><thead><tr><th>#</th><th>Stock</th><th>Price</th><th>Invest</th><th>Expected</th><th>Feasibility</th></tr></thead><tbody>`;picks.slice(3).forEach((p,i)=>{const fb=p.feasibility_color==='green'?'badge-green':'badge-yellow';h+=`<tr><td>${i+4}</td><td><strong>${p.ticker}</strong><br><span style="font-size:0.7rem;color:var(--text-muted)">${p.name}</span></td><td>${fmtMoney(p.price)}</td><td style="font-weight:700;color:var(--accent)">${fmtMoney(p.investment_needed)}</td><td style="color:var(--blue)">+${fmtMoney(p.expected_profit)}</td><td><span class="badge ${fb}">${p.feasibility}</span></td></tr>`;});h+='</tbody></table></div></details>';} el.innerHTML=h; }
 
 
 
@@ -1355,16 +1390,17 @@ async function calcCompound() {
    const j=await r.json();
    if(j.status!=='ok') throw new Error(j.message);
    const d=j.data;
+   lastCompoundData={mode:'montecarlo',data:d};lastCompoundHtml=true;
    el.innerHTML=`<div class="sim-stats" style="margin-top:16px">
-    <div class="sim-stat"><div class="label">Invested</div><div class="value">$${d.total_invested.toLocaleString()}</div></div>
-    <div class="sim-stat" style="border-color:var(--green)"><div class="label">🎲 90th %ile</div><div class="value positive">$${d.p90.toLocaleString()}</div><div style="font-size:0.6rem;color:var(--text-tertiary)">Best 10% of outcomes</div></div>
-    <div class="sim-stat" style="border-color:var(--blue)"><div class="label">🎲 Median</div><div class="value">$${d.median.toLocaleString()}</div><div style="font-size:0.6rem;color:var(--text-tertiary)">Most likely outcome</div></div>
-    <div class="sim-stat" style="border-color:var(--red)"><div class="label">🎲 10th %ile</div><div class="value ${d.p10_profit>=0?'positive':'negative'}">$${d.p10.toLocaleString()}</div><div style="font-size:0.6rem;color:var(--text-tertiary)">Worst 10% of outcomes</div></div>
+    <div class="sim-stat"><div class="label">Invested</div><div class="value">${fmtMoney(d.total_invested)}</div></div>
+    <div class="sim-stat" style="border-color:var(--green)"><div class="label">🎲 90th %ile</div><div class="value positive">${fmtMoney(d.p90)}</div><div style="font-size:0.6rem;color:var(--text-tertiary)">Best 10% of outcomes</div></div>
+    <div class="sim-stat" style="border-color:var(--blue)"><div class="label">🎲 Median</div><div class="value">${fmtMoney(d.median)}</div><div style="font-size:0.6rem;color:var(--text-tertiary)">Most likely outcome</div></div>
+    <div class="sim-stat" style="border-color:var(--red)"><div class="label">🎲 10th %ile</div><div class="value ${d.p10_profit>=0?'positive':'negative'}">${fmtMoney(d.p10)}</div><div style="font-size:0.6rem;color:var(--text-tertiary)">Worst 10% of outcomes</div></div>
    </div>
    <div style="padding:12px 16px;background:var(--bg);border:1px solid var(--border);border-radius:10px;margin-top:12px;font-size:0.8rem;color:var(--text-secondary)">
     <strong>🎲 Monte Carlo Simulation</strong> — ${d.simulations.toLocaleString()} random scenarios using historical S&P 500 volatility (σ=${d.annual_vol_pct}%/yr).<br>
-    <strong>${d.prob_profit}%</strong> chance of making a profit · Median profit: <strong class="${d.median_profit>=0?'positive':'negative'}">$${d.median_profit.toLocaleString()}</strong> ·
-    Range: <span class="negative">$${d.p10_profit.toLocaleString()}</span> to <span class="positive">+$${d.p90_profit.toLocaleString()}</span>
+    <strong>${d.prob_profit}%</strong> chance of making a profit · Median profit: <strong class="${d.median_profit>=0?'positive':'negative'}">${fmtMoney(d.median_profit)}</strong> ·
+    Range: <span class="negative">${fmtMoney(d.p10_profit)}</span> to <span class="positive">+${fmtMoney(d.p90_profit)}</span>
    </div>`;
   } catch(err) { el.innerHTML=`<div class="error-msg">${err.message}</div>`; }
  } else {
@@ -1374,11 +1410,12 @@ async function calcCompound() {
    if(j.status!=='ok') throw new Error(j.message);
    const d=j.data,e=d.expected,o=d.optimistic,p=d.pessimistic;
    const annRt = parseFloat(rt);
+   lastCompoundData={mode:'simple',expected:e,optimistic:o,pessimistic:p,annRt:annRt};lastCompoundHtml=true;
    el.innerHTML=`<div class="sim-stats" style="margin-top:16px">
-    <div class="sim-stat"><div class="label">Invested</div><div class="value">$${e.total_invested.toLocaleString()}</div></div>
-    <div class="sim-stat" style="border-color:var(--green)"><div class="label">📈 Optimistic</div><div class="value positive">$${o.final_value.toLocaleString()}</div><div style="font-size:0.6rem;color:var(--text-tertiary)">${(annRt*1.5).toFixed(1)}%/yr</div></div>
-    <div class="sim-stat" style="border-color:var(--blue)"><div class="label">📊 Expected</div><div class="value">$${e.final_value.toLocaleString()}</div><div style="font-size:0.6rem;color:var(--text-tertiary)">${annRt.toFixed(1)}%/yr</div></div>
-    <div class="sim-stat" style="border-color:var(--red)"><div class="label">📉 Pessimistic</div><div class="value">$${p.final_value.toLocaleString()}</div><div style="font-size:0.6rem;color:var(--text-tertiary)">${(annRt*0.5).toFixed(1)}%/yr</div></div>
+    <div class="sim-stat"><div class="label">Invested</div><div class="value">${fmtMoney(e.total_invested)}</div></div>
+    <div class="sim-stat" style="border-color:var(--green)"><div class="label">📈 Optimistic</div><div class="value positive">${fmtMoney(o.final_value)}</div><div style="font-size:0.6rem;color:var(--text-tertiary)">${(annRt*1.5).toFixed(1)}%/yr</div></div>
+    <div class="sim-stat" style="border-color:var(--blue)"><div class="label">📊 Expected</div><div class="value">${fmtMoney(e.final_value)}</div><div style="font-size:0.6rem;color:var(--text-tertiary)">${annRt.toFixed(1)}%/yr</div></div>
+    <div class="sim-stat" style="border-color:var(--red)"><div class="label">📉 Pessimistic</div><div class="value">${fmtMoney(p.final_value)}</div><div style="font-size:0.6rem;color:var(--text-tertiary)">${(annRt*0.5).toFixed(1)}%/yr</div></div>
    </div>
    <div style="padding:12px 16px;background:var(--bg);border:1px solid var(--border);border-radius:10px;margin-top:12px;font-size:0.8rem;color:var(--text-secondary)">
     <strong>ℹ️ How scenarios work:</strong> Expected uses your set return (${annRt}%). Optimistic = 1.5× (${(annRt*1.5).toFixed(1)}%). Pessimistic = 0.5× (${(annRt*0.5).toFixed(1)}%). These are simple multipliers showing a range — not guarantees. Try <strong style="color:var(--accent);cursor:pointer" onclick="compoundMode='montecarlo';document.getElementById('mcToggle').classList.add('active');document.getElementById('simpleToggle').classList.remove('active');calcCompound()">🎲 Monte Carlo</strong> for a more realistic simulation.
@@ -1399,23 +1436,28 @@ function selectProfile(profile, el) { currentProfile=profile; document.querySele
 
 async function loadPortfolio() { const a=document.getElementById('investmentAmount').value||10000,m=document.getElementById('timeframeMonths').value||12,c=document.getElementById('portfolioContent'); c.innerHTML='<div class="loading"><div class="spinner"></div><br>Building portfolio...</div>'; try{const r=await fetch(`/api/portfolio?profile=${currentProfile}&investment=${a}&months=${m}&tickers=0`);const j=await r.json();if(j.status!=='ok')throw new Error(j.message);renderPortfolio(j.data);dataLoaded['portfolios']=true;ts();}catch(e){c.innerHTML=`<div class="error-msg">${e.message}</div>`;} }
 
-function renderPortfolio(d) { const c=document.getElementById('portfolioContent'); let h=`<div style="margin-bottom:20px"><h3>${d.name}</h3><p style="color:var(--text-muted);font-size:0.9rem">${d.description}</p><div style="display:flex;gap:12px;margin-top:8px;flex-wrap:wrap"><span class="badge badge-blue">Risk: ${d.risk_level}</span><span class="badge badge-green">Target: ${d.target_return}</span><span class="badge badge-yellow">Rebalance: ${d.rebalance}</span></div></div>`; if(d.simulation){const s=d.simulation;h+=`<div style="margin-bottom:12px"><strong> ${d.timeframe_label||'1y'} Projection</strong></div><div class="sim-stats"><div class="sim-stat"><div class="label">Invested</div><div class="value">$${d.investment.toLocaleString()}</div></div><div class="sim-stat" style="border-color:var(--green)"><div class="label"> Optimistic</div><div class="value positive">$${s.optimistic_value.toLocaleString()}</div></div><div class="sim-stat" style="border-color:var(--blue)"><div class="label"> Expected</div><div class="value">$${s.end_value.toLocaleString()}</div></div><div class="sim-stat" style="border-color:var(--red)"><div class="label"> Pessimistic</div><div class="value">$${s.pessimistic_value.toLocaleString()}</div></div></div>`;} h+='<div style="margin:16px 0"><strong>Allocation:</strong></div><div class="alloc-bar">'; d.buy_list.forEach((b,i)=>{h+=`<div class="alloc-segment" style="width:${b.target_pct}%;background:${COLORS[i%COLORS.length]}">${b.target_pct>5?b.target_pct+'%':''}</div>`;}); h+='</div><div class="alloc-legend">'; d.buy_list.forEach((b,i)=>{h+=`<div class="alloc-legend-item"><div class="alloc-dot" style="background:${COLORS[i%COLORS.length]}"></div>${b.ticker} (${b.target_pct}%)</div>`;}); h+=`</div><div style="margin-top:24px"><h3> Buy List:</h3></div><div class="table-wrap"><table><thead><tr><th>Ticker</th><th>Name</th><th>%</th><th>Price</th><th>Shares</th><th>Cost</th><th>Why</th></tr></thead><tbody>`; d.buy_list.forEach(b=>{h+=`<tr><td><strong>${b.ticker}</strong></td><td>${b.name}</td><td>${b.target_pct}%</td><td>${b.price?'$'+b.price:'N/A'}</td><td style="font-weight:700;color:var(--accent)">${b.shares_to_buy.toFixed(4)}</td><td>$${b.cost.toLocaleString()}</td><td style="font-size:0.8rem;color:var(--text-muted)">${b.why}</td></tr>`;}); h+=`</tbody></table></div><div style="margin-top:16px;padding:16px;background:var(--bg);border:1px solid var(--border);border-radius:10px"><strong>Total:</strong> $${d.total_allocated.toLocaleString()} | <strong>Cash:</strong> $${d.cash_remaining.toLocaleString()}</div>`; c.innerHTML=h; }
+function renderPortfolio(d) { lastPortfolioTabData=d; const c=document.getElementById('portfolioContent'); let h=`<div style="margin-bottom:20px"><h3>${d.name}</h3><p style="color:var(--text-muted);font-size:0.9rem">${d.description}</p><div style="display:flex;gap:12px;margin-top:8px;flex-wrap:wrap"><span class="badge badge-blue">Risk: ${d.risk_level}</span><span class="badge badge-green">Target: ${d.target_return}</span><span class="badge badge-yellow">Rebalance: ${d.rebalance}</span></div></div>`; if(d.simulation){const s=d.simulation;h+=`<div style="margin-bottom:12px"><strong> ${d.timeframe_label||'1y'} Projection</strong></div><div class="sim-stats"><div class="sim-stat"><div class="label">Invested</div><div class="value">${fmtMoney(d.investment)}</div></div><div class="sim-stat" style="border-color:var(--green)"><div class="label"> Optimistic</div><div class="value positive">${fmtMoney(s.optimistic_value)}</div></div><div class="sim-stat" style="border-color:var(--blue)"><div class="label"> Expected</div><div class="value">${fmtMoney(s.end_value)}</div></div><div class="sim-stat" style="border-color:var(--red)"><div class="label"> Pessimistic</div><div class="value">${fmtMoney(s.pessimistic_value)}</div></div></div>`;} h+='<div style="margin:16px 0"><strong>Allocation:</strong></div><div class="alloc-bar">'; d.buy_list.forEach((b,i)=>{h+=`<div class="alloc-segment" style="width:${b.target_pct}%;background:${COLORS[i%COLORS.length]}">${b.target_pct>5?b.target_pct+'%':''}</div>`;}); h+='</div><div class="alloc-legend">'; d.buy_list.forEach((b,i)=>{h+=`<div class="alloc-legend-item"><div class="alloc-dot" style="background:${COLORS[i%COLORS.length]}"></div>${b.ticker} (${b.target_pct}%)</div>`;}); h+=`</div><div style="margin-top:24px"><h3> Buy List:</h3></div><div class="table-wrap"><table><thead><tr><th>Ticker</th><th>Name</th><th>%</th><th>Price</th><th>Shares</th><th>Cost</th><th>Why</th></tr></thead><tbody>`; d.buy_list.forEach(b=>{h+=`<tr><td><strong>${b.ticker}</strong></td><td>${b.name}</td><td>${b.target_pct}%</td><td>${b.price?fmtMoney(b.price):'N/A'}</td><td style="font-weight:700;color:var(--accent)">${b.shares_to_buy.toFixed(4)}</td><td>${fmtMoney(b.cost)}</td><td style="font-size:0.8rem;color:var(--text-muted)">${b.why}</td></tr>`;}); h+=`</tbody></table></div><div style="margin-top:16px;padding:16px;background:var(--bg);border:1px solid var(--border);border-radius:10px"><strong>Total:</strong> ${fmtMoney(d.total_allocated)} | <strong>Cash:</strong> ${fmtMoney(d.cash_remaining)}</div>`; c.innerHTML=h; }
 
 
 
-async function loadMarketData() { try{const[mr,mv]=await Promise.all([fetch('/api/market-overview'),fetch('/api/top-movers?market=all')]);const mkt=await mr.json(),mov=await mv.json();if(mkt.status==='ok'){renderIndices('usIndices',mkt.data.us);renderIndices('euIndices',mkt.data.eu);}if(mov.status==='ok'){renderMovers('gainersTable',mov.data.gainers);renderMovers('losersTable',mov.data.losers);}dataLoaded['market']=true;ts();}catch(e){document.getElementById('usIndices').innerHTML=`<div class="error-msg">${e.message}</div>`;} }
+async function loadMarketData() { try{const[mr,mv]=await Promise.all([fetch('/api/market-overview'),fetch('/api/top-movers?market=all')]);const mkt=await mr.json(),mov=await mv.json();if(mkt.status==='ok'){lastMarketData=mkt.data;renderIndices('usIndices',mkt.data.us);renderIndices('euIndices',mkt.data.eu);}if(mov.status==='ok'){lastMoversData=mov.data;renderMovers('gainersTable',mov.data.gainers);renderMovers('losersTable',mov.data.losers);}dataLoaded['market']=true;ts();}catch(e){document.getElementById('usIndices').innerHTML=`<div class="error-msg">${e.message}</div>`;} }
 
 function renderIndices(id,indices) { const el=document.getElementById(id); if(!indices?.length){el.innerHTML='<div class="error-msg">No data</div>';return;} el.innerHTML=indices.filter(i=>i.price!=null).map(i=>`<div class="index-card"><div class="name">${i.name}</div><div class="price">${(i.price||0).toLocaleString()}</div><div class="change ${cc(i.change)}">${ci(i.change)} ${fc(i.change)}</div></div>`).join(''); }
 
-function renderMovers(id,movers) { const el=document.getElementById(id); if(!movers?.length){el.innerHTML='<div class="error-msg">No data</div>';return;} let h='<table><thead><tr><th>#</th><th>Stock</th><th>Price</th><th>Change</th></tr></thead><tbody>'; movers.forEach((m,i)=>{h+=`<tr><td>${i+1}</td><td><strong>${m.ticker}</strong><br><span style="font-size:0.7rem;color:var(--text-muted)">${m.name}</span></td><td>$${m.price.toLocaleString()}</td><td class="${cc(m.change)}" style="font-weight:700">${ci(m.change)} ${fc(m.change)}</td></tr>`;}); el.innerHTML=h+'</tbody></table>'; }
+function renderMovers(id,movers) { const el=document.getElementById(id); if(!movers?.length){el.innerHTML='<div class="error-msg">No data</div>';return;} let h='<table><thead><tr><th>#</th><th>Stock</th><th>Price</th><th>Change</th></tr></thead><tbody>'; movers.forEach((m,i)=>{h+=`<tr><td>${i+1}</td><td><strong>${m.ticker}</strong><br><span style="font-size:0.7rem;color:var(--text-muted)">${m.name}</span></td><td>${fmtMoney(m.price)}</td><td class="${cc(m.change)}" style="font-weight:700">${ci(m.change)} ${fc(m.change)}</td></tr>`;}); el.innerHTML=h+'</tbody></table>'; }
 
 
 
 async function loadCommodities() { const el=document.getElementById('commoditiesContent'); el.innerHTML='<div class="loading"><div class="spinner"></div><br>Loading...</div>'; try{const r=await fetch('/api/commodities');const j=await r.json();if(j.status!=='ok')throw new Error(j.message);renderCommodities(j.data);dataLoaded['commodities']=true;ts();}catch(e){el.innerHTML=`<div class="error-msg"> ${e.message}<br><button class="btn" onclick="loadCommodities()"> Retry</button></div>`;} }
 
-function renderCommodities(commodities) { const el=document.getElementById('commoditiesContent'); if(!commodities?.length){el.innerHTML='<div class="error-msg">No data</div>';return;} let h='<div class="commodity-grid">'; commodities.forEach(c=>{const icon=COMMODITY_ICONS[c.name]||'';h+=`<div class="commodity-card"><div class="commodity-ticker">${c.ticker}</div><div class="commodity-icon">${icon}</div><div class="commodity-name">${c.name}</div><div class="commodity-price">$${c.price.toLocaleString()}</div><div class="commodity-change ${cc(c.change)}">${ci(c.change)} ${fc(c.change)}</div>${c.pct_1w!=null?`<div class="commodity-week">Week: <span class="${cc(c.pct_1w)}">${fc(c.pct_1w)}</span></div>`:''}</div>`;}); h+=`</div><div style="margin-top:20px;padding:16px;background:var(--bg);border:1px solid var(--border);border-radius:10px"><div style="font-size:0.9rem;font-weight:600;margin-bottom:8px"> Commodity ETFs:</div><div style="font-size:0.85rem;color:var(--text-muted)"><strong style="color:var(--accent)">GLD</strong> Gold <strong style="color:var(--accent)">SLV</strong> Silver <strong style="color:var(--accent)">USO</strong> Oil <strong style="color:var(--accent)">PPLT</strong> Platinum <strong style="color:var(--accent)">UNG</strong> Gas <strong style="color:var(--accent)">DBC</strong> Broad</div></div>`; el.innerHTML=h; }
+function renderCommodities(commodities) { lastCommoditiesData=commodities; const el=document.getElementById('commoditiesContent'); if(!commodities?.length){el.innerHTML='<div class="error-msg">No data</div>';return;} let h='<div class="commodity-grid">'; commodities.forEach(c=>{const icon=COMMODITY_ICONS[c.name]||'';h+=`<div class="commodity-card"><div class="commodity-ticker">${c.ticker}</div><div class="commodity-icon">${icon}</div><div class="commodity-name">${c.name}</div><div class="commodity-price">${fmtMoney(c.price)}</div><div class="commodity-change ${cc(c.change)}">${ci(c.change)} ${fc(c.change)}</div>${c.pct_1w!=null?`<div class="commodity-week">Week: <span class="${cc(c.pct_1w)}">${fc(c.pct_1w)}</span></div>`:''}</div>`;}); h+=`</div><div style="margin-top:20px;padding:16px;background:var(--bg);border:1px solid var(--border);border-radius:10px"><div style="font-size:0.9rem;font-weight:600;margin-bottom:8px"> Commodity ETFs:</div><div style="font-size:0.85rem;color:var(--text-muted)"><strong style="color:var(--accent)">GLD</strong> Gold <strong style="color:var(--accent)">SLV</strong> Silver <strong style="color:var(--accent)">USO</strong> Oil <strong style="color:var(--accent)">PPLT</strong> Platinum <strong style="color:var(--accent)">UNG</strong> Gas <strong style="color:var(--accent)">DBC</strong> Broad</div></div>`; el.innerHTML=h; }
 
 
+
+
+function calcCompoundRedraw(){if(!lastCompoundData)return;if(lastCompoundData.mode==='montecarlo'){var d=lastCompoundData.data;document.getElementById('compoundResult').innerHTML='<div class="sim-stats" style="margin-top:16px"><div class="sim-stat"><div class="label">Invested</div><div class="value">'+fmtMoney(d.total_invested)+'</div></div><div class="sim-stat" style="border-color:var(--green)"><div class="label">90th %ile</div><div class="value positive">'+fmtMoney(d.p90)+'</div></div><div class="sim-stat" style="border-color:var(--blue)"><div class="label">Median</div><div class="value">'+fmtMoney(d.median)+'</div></div><div class="sim-stat" style="border-color:var(--red)"><div class="label">10th %ile</div><div class="value">'+fmtMoney(d.p10)+'</div></div></div>';}else if(lastCompoundData.mode==='simple'){var e=lastCompoundData.expected,o=lastCompoundData.optimistic,p=lastCompoundData.pessimistic;document.getElementById('compoundResult').innerHTML='<div class="sim-stats" style="margin-top:16px"><div class="sim-stat"><div class="label">Invested</div><div class="value">'+fmtMoney(e.total_invested)+'</div></div><div class="sim-stat" style="border-color:var(--green)"><div class="label">Optimistic</div><div class="value positive">'+fmtMoney(o.final_value)+'</div></div><div class="sim-stat" style="border-color:var(--blue)"><div class="label">Expected</div><div class="value">'+fmtMoney(e.final_value)+'</div></div><div class="sim-stat" style="border-color:var(--red)"><div class="label">Pessimistic</div><div class="value">'+fmtMoney(p.final_value)+'</div></div></div>';}}
+function reRenderMarket(){if(lastMarketData){renderIndices('usIndices',lastMarketData.us);renderIndices('euIndices',lastMarketData.eu);}if(lastMoversData){renderMovers('gainersTable',lastMoversData.gainers);renderMovers('losersTable',lastMoversData.losers);}}
+function reRenderCommodities(){if(lastCommoditiesData)renderCommodities(lastCommoditiesData);if(lastCryptoData){var el=document.getElementById('commoditiesContent');var h=el.innerHTML;h+='<div style="margin-top:24px"><h3 style="margin-bottom:12px">Crypto Top 25</h3></div><div class="crypto-grid">';lastCryptoData.forEach(function(c){h+='<div class="crypto-card"><div class="crypto-name">'+c.name+'</div><div class="crypto-price">'+fmtMoney(c.price)+'</div><div class="crypto-change '+cc(c.change)+'">'+ci(c.change)+' '+fc(c.change)+'</div></div>';});h+='</div>';el.innerHTML=h;}}
 
 async function refreshAll() { await fetch('/api/clear-cache',{method:'POST'}); Object.keys(dataLoaded).forEach(k=>dataLoaded[k]=false); const active=document.querySelector('.tab.active'); if(active)loadTabData(active.dataset.tab); showToast('Refreshing...','info'); }
 
@@ -1660,7 +1702,7 @@ loadCommodities = async function() {
  const j = await r.json();
 
  if (j.status === 'ok' && j.data && j.data.length > 0) {
-
+ lastCryptoData=j.data;
  const el = document.getElementById('commoditiesContent');
 
  let h = el.innerHTML;
@@ -1679,7 +1721,7 @@ loadCommodities = async function() {
 
  <div class="crypto-name">${c.name}</div>
 
- <div class="crypto-price">$${c.price.toLocaleString()}</div>
+ <div class="crypto-price">${fmtMoney(c.price)}</div>
 
  <div class="crypto-change ${cc(c.change)}">${ci(c.change)} ${fc(c.change)}</div>
 
@@ -1723,13 +1765,13 @@ function openStockDetail(idx) {
     el.innerHTML = '<div class="detail-handle"></div>' +
         '<div class="detail-header"><div><div class="detail-ticker">' + a.ticker + '</div>' +
         '<div class="detail-name">' + a.name + ' <span class="badge badge-' + (a.market==='US'?'blue':'yellow') + '" style="font-size:0.55rem">' + a.market + '</span></div></div>' +
-        '<div style="text-align:right"><div class="detail-price">$' + a.price + '</div>' +
+        '<div style="text-align:right"><div class="detail-price">' + fmtMoney(a.price) + '</div>' +
         '<div class="' + changeCls + '" style="font-size:0.8rem;font-weight:600">' + changeSign + (a.pct_1w||0).toFixed(1) + '% week</div></div></div>' +
         '<div class="detail-grid">' +
-        '<div class="detail-item"><div class="label">Invest</div><div class="value">$' + a.invest_amount.toLocaleString() + '</div></div>' +
+        '<div class="detail-item"><div class="label">Invest</div><div class="value">' + fmtMoney(a.invest_amount) + '</div></div>' +
         '<div class="detail-item"><div class="label">Shares</div><div class="value">' + a.shares.toFixed(4) + '</div></div>' +
-        '<div class="detail-item"><div class="label">Target</div><div class="value positive">$' + a.target_price + ' (+' + a.potential_gain_pct + '%)</div></div>' +
-        '<div class="detail-item"><div class="label">Stop Loss</div><div class="value negative">$' + a.stop_loss + ' (' + a.potential_loss_pct + '%)</div></div>' +
+        '<div class="detail-item"><div class="label">Target</div><div class="value positive">' + fmtMoney(a.target_price) + ' (+' + a.potential_gain_pct + '%)</div></div>' +
+        '<div class="detail-item"><div class="label">Stop Loss</div><div class="value negative">' + fmtMoney(a.stop_loss) + ' (' + a.potential_loss_pct + '%)</div></div>' +
         '<div class="detail-item"><div class="label">Score</div><div class="value">' + a.score + '</div></div>' +
         '<div class="detail-item"><div class="label">RSI</div><div class="value">' + a.rsi + '</div></div>' +
         '</div>' +
@@ -1763,7 +1805,7 @@ renderActions = function(d) {
             '<span class="ticker-name">' + a.name + '</span>' +
             '</div>' +
             '<div class="ticker-right">' +
-            '<div class="ticker-price">$' + a.price + '</div>' +
+            '<div class="ticker-price">' + fmtMoney(a.price) + '</div>' +
             '<div class="ticker-change ' + changeCls + '">' + changeSign + (a.pct_1w||0).toFixed(1) + '%</div>' +
             '</div></div>';
     });
@@ -1779,7 +1821,7 @@ renderActions = function(d) {
                 '<span class="ticker-badge" style="background:var(--red-bg);color:var(--red)">' + s.action + '</span>' +
                 '</div>' +
                 '<div class="ticker-right">' +
-                '<div class="ticker-price">$' + s.price + '</div>' +
+                '<div class="ticker-price">' + fmtMoney(s.price) + '</div>' +
                 '<div class="ticker-change ' + changeCls + '">' + changeSign + (s.pct_1w||0).toFixed(1) + '%</div>' +
                 '</div></div>';
         });
