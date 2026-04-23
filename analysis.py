@@ -2198,6 +2198,62 @@ def search_ticker(ticker_str):
 # Chat Context — build context for AI chatbot
 # ---------------------------------------------------------------------------
 
+
+def get_macro_context():
+    """
+    Get macro fear/greed indicators for AI context.
+    Returns VIX, gold trend, treasury yield, USD strength.
+    """
+    macro_tickers = ["^VIX", "GC=F", "^TNX", "DX-Y.NYB"]
+    data = _batch_download(macro_tickers, period="1mo", interval="1d")
+    
+    result = {}
+    
+    # VIX — Fear Index
+    vix_df = data.get("^VIX")
+    if vix_df is not None and len(vix_df) >= 2:
+        close = vix_df["Close"].squeeze()
+        vix_current = float(close.iloc[-1])
+        vix_1w = float((close.iloc[-1] / close.iloc[-5] - 1) * 100) if len(close) >= 5 else 0
+        if vix_current > 30:
+            vix_label = "PANIC — extreme fear in markets"
+        elif vix_current > 25:
+            vix_label = "HIGH FEAR — investors are nervous"
+        elif vix_current > 20:
+            vix_label = "ELEVATED — above-average uncertainty"
+        elif vix_current > 15:
+            vix_label = "NORMAL — moderate volatility"
+        else:
+            vix_label = "COMPLACENT — very low fear (contrarian warning)"
+        result["vix"] = {"value": round(vix_current, 1), "change_1w": round(vix_1w, 1), "label": vix_label}
+    
+    # Gold — Safe haven indicator
+    gold_df = data.get("GC=F")
+    if gold_df is not None and len(gold_df) >= 2:
+        close = gold_df["Close"].squeeze()
+        gold_price = float(close.iloc[-1])
+        gold_1w = float((close.iloc[-1] / close.iloc[-5] - 1) * 100) if len(close) >= 5 else 0
+        gold_1m = float((close.iloc[-1] / close.iloc[0] - 1) * 100)
+        result["gold"] = {"price": round(gold_price, 2), "change_1w": round(gold_1w, 1), "change_1m": round(gold_1m, 1)}
+    
+    # 10Y Treasury Yield
+    tnx_df = data.get("^TNX")
+    if tnx_df is not None and len(tnx_df) >= 2:
+        close = tnx_df["Close"].squeeze()
+        yield_current = float(close.iloc[-1])
+        yield_1w = float(close.iloc[-1] - close.iloc[-5]) if len(close) >= 5 else 0
+        result["treasury_10y"] = {"yield": round(yield_current, 2), "change_1w": round(yield_1w, 2)}
+    
+    # USD Index
+    usd_df = data.get("DX-Y.NYB")
+    if usd_df is not None and len(usd_df) >= 2:
+        close = usd_df["Close"].squeeze()
+        usd_current = float(close.iloc[-1])
+        usd_1w = float((close.iloc[-1] / close.iloc[-5] - 1) * 100) if len(close) >= 5 else 0
+        result["usd_index"] = {"value": round(usd_current, 2), "change_1w": round(usd_1w, 1)}
+    
+    return result
+
 def get_market_regime():
     """
     Detect current market regime: bull, bear, or sideways.
@@ -2254,6 +2310,30 @@ def get_ai_analysis_context(holdings=None, trade_history=None):
     Used for AI-enhanced stock analysis and smarter recommendations.
     """
     context_parts = []
+
+    # Macro fear/greed indicators
+    try:
+        macro = get_macro_context()
+        context_parts.append("=== MACRO FEAR/GREED INDICATORS (use these for EVERY analysis) ===")
+        if "vix" in macro:
+            v = macro["vix"]
+            context_parts.append(f"VIX (Fear Index): {v['value']} ({v['change_1w']:+.1f}% 1W) — {v['label']}")
+        if "gold" in macro:
+            g = macro["gold"]
+            context_parts.append(f"Gold: ${g['price']} ({g['change_1w']:+.1f}% 1W, {g['change_1m']:+.1f}% 1M) — safe-haven demand indicator")
+        if "treasury_10y" in macro:
+            t = macro["treasury_10y"]
+            context_parts.append(f"10Y Treasury Yield: {t['yield']}% ({t['change_1w']:+.2f} 1W)")
+        if "usd_index" in macro:
+            u = macro["usd_index"]
+            context_parts.append(f"USD Index: {u['value']} ({u['change_1w']:+.1f}% 1W)")
+        # Macro interpretation
+        if "vix" in macro and macro["vix"]["value"] > 25:
+            context_parts.append("⚠️ MACRO ALERT: High VIX = high fear. Consider safe-haven assets (gold, bonds, cash).")
+        if "gold" in macro and macro["gold"]["change_1w"] > 3:
+            context_parts.append("⚠️ MACRO ALERT: Gold surging = flight to safety. Geopolitical/economic stress likely.")
+    except Exception:
+        pass
 
     # Market regime
     try:
@@ -2475,14 +2555,20 @@ def get_chat_context(holdings=None, trade_history=None):
             context_parts.append(f"  {ticker}: ${bp:.2f} → ${sp:.2f} ({pnl_pct:+.1f}%)")
 
     context_parts.append("\n=== YOUR IDENTITY ===")
-    context_parts.append("You are Stonks, a Senior Portfolio Strategist at a top-tier investment firm. You manage $50M+ in client assets across US and EU equities, ETFs, commodities, and crypto. You have 20+ years of experience in technical analysis, risk management, and portfolio construction. You have a slightly humorous personality — you occasionally use stock market memes and jokes, but always back it up with real data and serious analysis.")
+    context_parts.append("You are Stonks, a legendary Wall Street trader turned independent advisor. You have survived the dot-com crash, 2008, COVID crash, and whatever fresh hell the market is cooking up now. You manage your own fund and advise a small circle of trusted clients. Your style: brutally honest, darkly funny, and always backed by data. You use sarcasm, dark humor, and pop culture references -- but your analysis is razor-sharp. Think: if Wolf of Wall Street met a Bloomberg terminal and developed a conscience.")
     context_parts.append("")
     context_parts.append("=== YOUR PERSONALITY ===")
-    context_parts.append("- Direct and confident, like a trusted advisor talking over coffee")
+    context_parts.append("- Dark humor and sarcasm are your love language. Examples:")
+    context_parts.append("  * 'Ah yes, another once-in-a-lifetime crash... the third one this decade'")
+    context_parts.append("  * 'You bought at the all-time high? Bold strategy, Cotton. Let\'s see if it pays off.'")
+    context_parts.append("  * 'This stock is the financial equivalent of a Netflix show that gets cancelled after one season'")
+    context_parts.append("  * 'The market can stay irrational longer than you can stay solvent — ask me how I know'")
     context_parts.append("- You use NUMBERS, not vague language ('NVDA is 12% below its 200-day SMA at $198' NOT 'NVDA looks weak')")
-    context_parts.append("- Slightly opinionated — you have views and defend them with data")
-    context_parts.append("- You admit uncertainty honestly when data is missing")
-    context_parts.append("- You explain complex concepts simply for beginners, but don't dumb things down for experienced users")
+    context_parts.append("- Brutally honest — if someone's portfolio is trash, you tell them (nicely, with humor)")
+    context_parts.append("- You reference macro events naturally: 'Gold is up 8% this month — turns out people buy shiny rocks when the world is on fire'")
+    context_parts.append("- Pop culture references welcome: movies, memes, sports analogies")
+    context_parts.append("- You admit uncertainty with humor: 'My crystal ball is at the shop, but based on the data...'")
+    context_parts.append("- ALWAYS consider VIX, gold, and macro indicators when giving advice — don't just look at technicals in isolation")
     context_parts.append("")
     context_parts.append("=== ANALYSIS FRAMEWORK (use for every stock question) ===")
     context_parts.append("1. PRICE ACTION: Current price vs key levels (SMA 50/200, 52-week high/low, support/resistance)")
