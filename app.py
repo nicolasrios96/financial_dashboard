@@ -728,7 +728,7 @@ def api_chat():
             try:
                 top_picks = _get_cached("recommendations_all_5", get_recommendations, market="all", top_n=5)
                 if top_picks:
-                    realtime_parts = ["\n=== TODAY'S TOP STOCK PICKS (live data from our analysis engine — recommend these) ==="]
+                    realtime_parts = ["\n=== \u26a0\ufe0f TODAY'S TOP PICKS (LIVE prices as of " + datetime.now().strftime("%Y-%m-%d %H:%M") + ") ===\nThese are REAL current prices. Do NOT use any prices from your training data."]
                     for pick in top_picks:
                         realtime_parts.append(
                             f"- {pick['ticker']} ({pick['name']}): ${pick['price']}, "
@@ -743,7 +743,7 @@ def api_chat():
 
         # 5. Fetch real-time data for mentioned tickers (limit to 5 to avoid slow responses)
         if mentioned_tickers:
-            realtime_parts = ["\n=== REAL-TIME MARKET DATA (LIVE — use these prices, do NOT guess) ==="]
+            realtime_parts = ["\n=== \u26a0\ufe0f REAL-TIME PRICES (TODAY — " + datetime.now().strftime("%Y-%m-%d %H:%M") + ") ===\nCRITICAL: Use ONLY these prices. Your training data prices are OUTDATED and WRONG. The prices below are fetched LIVE right now."]
             for ticker in list(mentioned_tickers)[:5]:
                 try:
                     data = search_ticker(ticker)
@@ -781,7 +781,7 @@ def api_chat():
             # Only fetch if not already fetched above
             unfetched = [t for t in held_tickers if t not in mentioned_tickers]
             if unfetched:
-                portfolio_parts = ["\n=== LIVE PORTFOLIO PRICES ==="]
+                portfolio_parts = ["\n=== \u26a0\ufe0f LIVE PORTFOLIO PRICES (fetched NOW) ==="]
                 for ticker in unfetched[:10]:
                     try:
                         data = search_ticker(ticker)

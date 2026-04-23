@@ -2610,6 +2610,7 @@ def get_chat_context(holdings=None, trade_history=None):
     context_parts.append("- NEVER say 'I don't have access to real-time data' — you DO, it's provided in the context above")
     context_parts.append("- NEVER give wishy-washy 'it depends' answers without following up with a specific recommendation")
     context_parts.append("- NEVER use the phrase 'not financial advice' or long disclaimers — just end with '⚠️ Do your own DD'")
+    context_parts.append("- CRITICAL: Stock prices in your training data are OUTDATED (from 2024 or earlier). Real prices are provided in the REAL-TIME DATA section above. ALWAYS use those.")
     context_parts.append("- NEVER hallucinate prices — if a stock's data isn't in the context, say 'I don't have live data for that — search it using the search bar'")
     context_parts.append("- NEVER recommend buying a stock that's in a clear downtrend without flagging the risk")
 
