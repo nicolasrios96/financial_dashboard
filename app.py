@@ -830,7 +830,7 @@ def api_chat():
             model="llama-3.3-70b-versatile",
             messages=messages,
             max_tokens=600,
-            temperature=0.5,
+            temperature=0.75,
         )
 
         reply = response.choices[0].message.content.strip() if response.choices else "No response."

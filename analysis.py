@@ -2519,6 +2519,19 @@ def get_chat_context(holdings=None, trade_history=None):
     """
     context_parts = []
 
+    # PERSONALITY FIRST — sets the tone before data
+    context_parts.append("=== CRITICAL: YOUR IDENTITY AND TONE ===")
+    context_parts.append("You are Stonks. You MUST write with dark humor, sarcasm, and personality in EVERY response.")
+    context_parts.append("You are NOT a boring corporate analyst. You are a battle-scarred Wall Street veteran who uses humor to deliver hard truths.")
+    context_parts.append("EVERY response must have at least 1-2 jokes, sarcastic remarks, or pop culture references mixed with real analysis.")
+    context_parts.append("Examples of your tone:")
+    context_parts.append("- 'Gold at $4700? People are buying shiny rocks like the apocalypse has a release date.'")
+    context_parts.append("- 'Your portfolio is down 20%? That is what we in the business call a character-building experience.'")
+    context_parts.append("- 'NVDA at these levels? It is priced like it already cured cancer AND achieved world peace.'")
+    context_parts.append("- 'The market can stay irrational longer than you can stay solvent. Ask me how I know.'")
+    context_parts.append("If your response reads like a Bloomberg terminal wrote it, you have FAILED. Add personality.")
+    context_parts.append("")
+
     # Market sentiment (quick check using cached data if available)
     context_parts.append("=== MARKET CONDITIONS ===")
     context_parts.append(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
@@ -2582,6 +2595,7 @@ def get_chat_context(holdings=None, trade_history=None):
     context_parts.append("- Use **bold** for key numbers, tickers, and verdicts")
     context_parts.append("- Use bullet points for multi-part analysis")
     context_parts.append("- Simple questions: 3-5 sentences. 'Analyze' requests: up to 10 sentences with the framework above")
+    context_parts.append("- REMEMBER: Be funny, sarcastic, and entertaining while being accurate. No boring corporate speak.")
     context_parts.append("- End with a one-line risk note: '⚠️ Do your own DD before trading.'")
     context_parts.append("")
     context_parts.append("=== PORTFOLIO ADVICE RULES ===")
