@@ -771,6 +771,21 @@ def api_chat():
                         if data.get('sma_200'):
                             line += f", SMA200: ${data['sma_200']}"
                         line += f", Target: ${data['target_price']}, Stop-Loss: ${data['stop_loss']}"
+                        # --- ANALYST DATA for AI context ---
+                        analyst = data.get('analyst', {})
+                        if analyst:
+                            if analyst.get('analyst_total'):
+                                line += f"\n  ANALYSTS ({analyst['analyst_total']} analysts): {analyst.get('analyst_buy_pct',0):.0f}% Buy, {analyst.get('analyst_hold_pct',0):.0f}% Hold, {analyst.get('analyst_sell_pct',0):.0f}% Sell"
+                            if analyst.get('target_mean'):
+                                line += f" | 12M Target: ${analyst['target_mean']} ({analyst.get('target_upside_pct',0):+.1f}% upside)"
+                            if analyst.get('target_high'):
+                                line += f" [High: ${analyst['target_high']}, Low: ${analyst.get('target_low','?')}]"
+                            if analyst.get('forward_pe'):
+                                line += f" | Fwd P/E: {analyst['forward_pe']}"
+                            if analyst.get('earnings_growth_pct') is not None:
+                                line += f", EPS Growth: {analyst['earnings_growth_pct']:+.1f}%"
+                            if analyst.get('revenue_growth_pct') is not None:
+                                line += f", Rev Growth: {analyst['revenue_growth_pct']:+.1f}%"
                         realtime_parts.append(line)
                 except Exception:
                     pass

@@ -1472,6 +1472,13 @@ def get_todays_actions(investment=1000, strategy="best"):
 
             shares = round(alloc / pick["price"], 4) if pick["price"] > 0 else 0
 
+            # Fetch analyst data for this pick (only for final selected picks — fast)
+            pick_analyst = {}
+            try:
+                pick_analyst = get_analyst_data(pick["ticker"])
+            except Exception:
+                pass
+
             actions.append({
                 "action": "BUY",
                 "ticker": pick["ticker"],
@@ -1492,6 +1499,7 @@ def get_todays_actions(investment=1000, strategy="best"):
                 "rsi": pick["rsi"],
                 "pct_1w": pick["pct_1w"],
                 "pct_1m": pick["pct_1m"],
+                "analyst": pick_analyst if pick_analyst else None,
             })
 
     # Build sell alerts (top 3)
@@ -1889,6 +1897,23 @@ def analyze_portfolio_holdings(holdings, trade_history=None):
 
         days_label = f"{days_held}d" if days_held is not None else "?"
 
+        # --- Fetch analyst data for this holding ---
+        holding_analyst = {}
+        try:
+            holding_analyst = get_analyst_data(ticker)
+        except Exception:
+            pass
+
+        # Enhance advice with analyst data if available
+        if holding_analyst.get("analyst_total") and holding_analyst.get("target_upside_pct") is not None:
+            buy_pct = holding_analyst.get("analyst_buy_pct", 0)
+            upside = holding_analyst.get("target_upside_pct", 0)
+            target = holding_analyst.get("target_mean", 0)
+            if buy_pct >= 50 and upside >= 10 and pnl_pct <= -10:
+                advice += f" (but {buy_pct:.0f}% of analysts say Buy with ${target} target = {upside:+.0f}% upside)"
+            elif buy_pct < 30 and status in ("green", "yellow"):
+                advice += f" (⚠️ only {buy_pct:.0f}% of analysts recommend Buy)"
+
         results.append({
             "ticker": ticker,
             "name": result["name"],
@@ -1909,6 +1934,7 @@ def analyze_portfolio_holdings(holdings, trade_history=None):
             "rsi": rsi,
             "stop_loss": result["stop_loss"],
             "target_price": result["target_price"],
+            "analyst": holding_analyst if holding_analyst else None,
         })
 
     # Portfolio summary

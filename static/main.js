@@ -1004,6 +1004,7 @@ function renderActions(d) {
  </div>
 
  <div class="reason"> ${reasonText}</div>
+ ${a.analyst && a.analyst.analyst_total ? `<div style="margin-top:4px;font-size:0.7rem;color:var(--text-secondary)">📊 Analysts (${a.analyst.analyst_total}): <span style="color:var(--green)">${Math.round(a.analyst.analyst_buy_pct||0)}% Buy</span> · <span style="color:var(--yellow)">${Math.round(a.analyst.analyst_hold_pct||0)}% Hold</span> · <span style="color:var(--red)">${Math.round(a.analyst.analyst_sell_pct||0)}% Sell</span>${a.analyst.target_mean ? ` · 🎯 Target: ${fmtMoney(a.analyst.target_mean)} <span class="${(a.analyst.target_upside_pct||0)>=0?'positive':'negative'}">(${(a.analyst.target_upside_pct||0)>=0?'+':''}${a.analyst.target_upside_pct}%)</span>` : ''}${a.analyst.forward_pe ? ` · P/E: ${a.analyst.forward_pe}` : ''}</div>` : ''}
 
  </div>
 
