@@ -29,6 +29,7 @@ from analysis import (
     ai_analyze_single,
     combine_scores,
     get_crypto_data,
+    get_analyst_data,
     CRYPTO_STOCKS,
 )
 import socket
@@ -36,6 +37,8 @@ import traceback
 import math
 import json
 import os
+import sqlite3
+import hashlib
 from datetime import datetime
 
 app = Flask(__name__)
@@ -836,6 +839,134 @@ def api_chat():
         reply = response.choices[0].message.content.strip() if response.choices else "No response."
         return safe_jsonify({"status": "ok", "reply": reply})
 
+    except Exception as e:
+        traceback.print_exc()
+        return safe_jsonify({"status": "error", "message": str(e)}, 500)
+
+
+# ---------------------------------------------------------------------------
+# Analyst Data Endpoint
+# ---------------------------------------------------------------------------
+
+@app.route("/api/analyst")
+def api_analyst():
+    """Get analyst consensus data for a ticker (buy/hold/sell %, price targets, P/E)."""
+    try:
+        ticker = request.args.get("ticker", "").strip().upper()
+        if not ticker:
+            return safe_jsonify({"status": "error", "message": "No ticker provided."}, 400)
+        if len(ticker) > 20:
+            return safe_jsonify({"status": "error", "message": "Invalid ticker."}, 400)
+
+        cache_key = f"analyst_{ticker}"
+        now = datetime.now().timestamp()
+        if cache_key in _cache:
+            data, ts = _cache[cache_key]
+            if now - ts < 1800:  # 30 min cache
+                return safe_jsonify({"status": "ok", "data": data})
+
+        data = get_analyst_data(ticker)
+        _cache[cache_key] = (data, now)
+        return safe_jsonify({"status": "ok", "data": data})
+    except Exception as e:
+        traceback.print_exc()
+        return safe_jsonify({"status": "error", "message": str(e)}, 500)
+
+
+# ---------------------------------------------------------------------------
+# PIN-Based Portfolio Persistence (SQLite — works across devices)
+# ---------------------------------------------------------------------------
+
+DB_PATH = os.path.join(DATA_DIR, "portfolios.db")
+
+
+def _init_db():
+    """Initialize SQLite database for PIN-based portfolio storage."""
+    _ensure_data_dir()
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS portfolios (
+            pin_hash TEXT PRIMARY KEY,
+            data TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+
+def _hash_pin(pin):
+    """Hash a PIN for storage (SHA-256). PIN is case-insensitive."""
+    return hashlib.sha256(pin.strip().lower().encode("utf-8")).hexdigest()
+
+
+@app.route("/api/portfolio-pin/save", methods=["POST"])
+def api_pin_save():
+    """Save portfolio data with a PIN code for cross-device access."""
+    try:
+        body = request.get_json(force=True)
+        pin = str(body.get("pin", "")).strip()
+        holdings = body.get("holdings", [])
+        trade_history = body.get("trade_history", [])
+
+        if not pin or len(pin) < 4 or len(pin) > 20:
+            return safe_jsonify({"status": "error", "message": "PIN must be 4-20 characters."}, 400)
+
+        # Limit sizes
+        holdings = holdings[:50]
+        trade_history = trade_history[:500]
+
+        pin_hash = _hash_pin(pin)
+        data = json.dumps({"holdings": holdings, "trade_history": trade_history}, ensure_ascii=False)
+
+        _init_db()
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute(
+            "INSERT OR REPLACE INTO portfolios (pin_hash, data, updated_at) VALUES (?, ?, ?)",
+            (pin_hash, data, datetime.now().isoformat())
+        )
+        conn.commit()
+        conn.close()
+
+        return safe_jsonify({"status": "ok", "message": f"Portfolio saved with PIN! Use the same PIN on any device to load it."})
+    except Exception as e:
+        traceback.print_exc()
+        return safe_jsonify({"status": "error", "message": str(e)}, 500)
+
+
+@app.route("/api/portfolio-pin/load", methods=["POST"])
+def api_pin_load():
+    """Load portfolio data using a PIN code."""
+    try:
+        body = request.get_json(force=True)
+        pin = str(body.get("pin", "")).strip()
+
+        if not pin or len(pin) < 4:
+            return safe_jsonify({"status": "error", "message": "Enter your PIN (4+ characters)."}, 400)
+
+        pin_hash = _hash_pin(pin)
+
+        _init_db()
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("SELECT data, updated_at FROM portfolios WHERE pin_hash = ?", (pin_hash,))
+        row = c.fetchone()
+        conn.close()
+
+        if not row:
+            return safe_jsonify({"status": "error", "message": "No portfolio found for this PIN. Check your PIN or save first."}, 404)
+
+        data = json.loads(row[0])
+        updated_at = row[1]
+
+        return safe_jsonify({
+            "status": "ok",
+            "data": data,
+            "updated_at": updated_at,
+            "message": f"Portfolio loaded! Last saved: {updated_at[:16]}"
+        })
     except Exception as e:
         traceback.print_exc()
         return safe_jsonify({"status": "error", "message": str(e)}, 500)

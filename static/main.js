@@ -352,6 +352,41 @@ function renderSearchResult(d) {
 
  const trendIcon = d.trend === 'uptrend' ? '' : d.trend === 'downtrend' ? '' : '';
 
+ // Analyst data
+ const a = d.analyst || {};
+ let analystHtml = '';
+ if (a.analyst_total) {
+  const buyW = a.analyst_buy_pct || 0;
+  const holdW = a.analyst_hold_pct || 0;
+  const sellW = a.analyst_sell_pct || 0;
+  analystHtml = `<div style="margin-top:10px;padding:10px 12px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:8px">
+   <div style="font-size:0.75rem;font-weight:600;margin-bottom:6px">📊 Analyst Consensus (${a.analyst_total} analysts)</div>
+   <div style="display:flex;height:20px;border-radius:4px;overflow:hidden;margin-bottom:6px">
+    ${buyW > 0 ? `<div style="width:${buyW}%;background:var(--green);display:flex;align-items:center;justify-content:center;font-size:0.6rem;color:#fff;font-weight:700">${buyW > 10 ? Math.round(buyW)+'%' : ''}</div>` : ''}
+    ${holdW > 0 ? `<div style="width:${holdW}%;background:var(--yellow);display:flex;align-items:center;justify-content:center;font-size:0.6rem;color:#000;font-weight:700">${holdW > 10 ? Math.round(holdW)+'%' : ''}</div>` : ''}
+    ${sellW > 0 ? `<div style="width:${sellW}%;background:var(--red);display:flex;align-items:center;justify-content:center;font-size:0.6rem;color:#fff;font-weight:700">${sellW > 10 ? Math.round(sellW)+'%' : ''}</div>` : ''}
+   </div>
+   <div style="display:flex;gap:12px;font-size:0.7rem;color:var(--text-secondary)">
+    <span style="color:var(--green)">🟢 Buy ${Math.round(buyW)}%</span>
+    <span style="color:var(--yellow)">🟡 Hold ${Math.round(holdW)}%</span>
+    <span style="color:var(--red)">🔴 Sell ${Math.round(sellW)}%</span>
+   </div>
+   <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px;font-size:0.7rem">
+    ${a.target_mean ? `<span>🎯 Target: <strong>${fmtMoney(a.target_mean)}</strong> <span class="${(a.target_upside_pct||0)>=0?'positive':'negative'}">(${a.target_upside_pct>=0?'+':''}${a.target_upside_pct}%)</span></span>` : ''}
+    ${a.target_high ? `<span style="color:var(--text-tertiary)">High: ${fmtMoney(a.target_high)}</span>` : ''}
+    ${a.target_low ? `<span style="color:var(--text-tertiary)">Low: ${fmtMoney(a.target_low)}</span>` : ''}
+   </div>
+   <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px;font-size:0.65rem;color:var(--text-tertiary)">
+    ${a.forward_pe ? `<span>Fwd P/E: <strong>${a.forward_pe}</strong></span>` : ''}
+    ${a.trailing_pe ? `<span>Trail P/E: ${a.trailing_pe}</span>` : ''}
+    ${a.peg_ratio ? `<span>PEG: ${a.peg_ratio}</span>` : ''}
+    ${a.earnings_growth_pct != null ? `<span>EPS Growth: <strong class="${a.earnings_growth_pct>=0?'positive':'negative'}">${a.earnings_growth_pct>=0?'+':''}${a.earnings_growth_pct}%</strong></span>` : ''}
+    ${a.revenue_growth_pct != null ? `<span>Rev Growth: <strong class="${a.revenue_growth_pct>=0?'positive':'negative'}">${a.revenue_growth_pct>=0?'+':''}${a.revenue_growth_pct}%</strong></span>` : ''}
+   </div>
+   ${d.analyst_adjustment ? `<div style="font-size:0.65rem;color:var(--accent);margin-top:4px">Score adjusted ${d.analyst_adjustment>0?'+':''}${d.analyst_adjustment} based on analyst consensus</div>` : ''}
+  </div>`;
+ }
+
  let h = `<div class="search-stock-card">
 
  <div class="stock-main">
@@ -383,6 +418,7 @@ function renderSearchResult(d) {
  <div class="metric">From High: <strong class="${cc(d.pct_from_high)}">${fc(d.pct_from_high)}</strong></div>
 
  </div>
+ ${analystHtml}
 
  </div>
 
@@ -1445,6 +1481,63 @@ function importPortfolio(event) {
 async function syncToServer() { try{const r=await fetch('/api/portfolio-data',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({holdings:myPortfolio,trade_history:myTradeHistory})});const j=await r.json();if(j.status==='ok')showToast('Saved to server!','success');else throw new Error(j.message);}catch(e){showToast('Failed: '+e.message,'error');} }
 
 async function syncFromServer() { try{const r=await fetch('/api/portfolio-data');const j=await r.json();if(j.status==='ok'&&j.data){const d=j.data;if(!d.holdings?.length&&!d.trade_history?.length){showToast('No data on server','info');return;}if(!confirm(`Load ${d.holdings?.length||0} holdings?`))return;myPortfolio=d.holdings||[];myTradeHistory=d.trade_history||[];savePortfolio();renderPortfolioList();document.getElementById('holdingsContent').innerHTML='';showToast('Loaded!','success');}else throw new Error(j.message||'No data');}catch(e){showToast('Failed: '+e.message,'error');} }
+
+// ============================================================
+// PIN-BASED PORTFOLIO SYNC (cross-device)
+// ============================================================
+async function pinSave() {
+ var pinEl = document.getElementById('pinInput');
+ var pin = (pinEl ? pinEl.value : '').trim();
+ if (!pin || pin.length < 4) { showToast('Enter a PIN (4+ characters)', 'error'); return; }
+ if (!myPortfolio.length && !myTradeHistory.length) { showToast('No portfolio data to save', 'info'); return; }
+ try {
+  var r = await fetch('/api/portfolio-pin/save', {
+   method: 'POST', headers: {'Content-Type':'application/json'},
+   body: JSON.stringify({ pin: pin, holdings: myPortfolio, trade_history: myTradeHistory })
+  });
+  var j = await r.json();
+  if (j.status === 'ok') {
+   localStorage.setItem('portfolioPin', pin);
+   showToast('✅ ' + j.message, 'success');
+  } else { showToast('❌ ' + j.message, 'error'); }
+ } catch(e) { showToast('Failed: ' + e.message, 'error'); }
+}
+
+async function pinLoad() {
+ var pinEl = document.getElementById('pinInput');
+ var pin = (pinEl ? pinEl.value : '').trim();
+ if (!pin || pin.length < 4) { showToast('Enter your PIN (4+ characters)', 'error'); return; }
+ try {
+  var r = await fetch('/api/portfolio-pin/load', {
+   method: 'POST', headers: {'Content-Type':'application/json'},
+   body: JSON.stringify({ pin: pin })
+  });
+  var j = await r.json();
+  if (j.status === 'ok' && j.data) {
+   var d = j.data;
+   var count = (d.holdings || []).length;
+   if (!confirm('Load ' + count + ' holdings from PIN?\nLast saved: ' + (j.updated_at || '?').substring(0, 16))) return;
+   myPortfolio = d.holdings || [];
+   myTradeHistory = d.trade_history || [];
+   savePortfolio();
+   localStorage.setItem('portfolioPin', pin);
+   renderPortfolioList();
+   document.getElementById('holdingsContent').innerHTML = '';
+   showToast('✅ ' + j.message, 'success');
+  } else { showToast('❌ ' + (j.message || 'Not found'), 'error'); }
+ } catch(e) { showToast('Failed: ' + e.message, 'error'); }
+}
+
+// Restore saved PIN
+(function() {
+ var savedPin = localStorage.getItem('portfolioPin');
+ if (savedPin) {
+  setTimeout(function() {
+   var el = document.getElementById('pinInput');
+   if (el) el.value = savedPin;
+  }, 100);
+ }
+})();
 
 
 

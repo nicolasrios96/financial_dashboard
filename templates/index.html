@@ -82,13 +82,22 @@
         <div class="card">
             <h2>💼 My Portfolio — Track & Get Advice</h2>
             <p class="subtitle">Add your stocks with buy price and date. Sell them to track your win/loss history. Get personalized advice based on your actual P&L.</p>
+            <div style="background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:16px">
+                <div style="font-size:0.85rem;font-weight:600;margin-bottom:10px">🔐 Sync Across Devices (PIN-based)</div>
+                <div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:10px">Choose a PIN to save your portfolio. Use the same PIN on any phone/computer to load it.</div>
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                    <input type="text" id="pinInput" placeholder="Your PIN (4+ chars)" maxlength="20" style="width:160px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:0.85rem">
+                    <button class="btn btn-primary" onclick="pinSave()" style="font-size:0.8rem">💾 Save with PIN</button>
+                    <button class="btn" onclick="pinLoad()" style="font-size:0.8rem">☁️ Load from PIN</button>
+                </div>
+            </div>
             <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
                 <button class="btn" onclick="exportPortfolio()">📥 Export JSON</button>
                 <button class="btn" onclick="exportPortfolioCSV()">📥 Export CSV</button>
                 <button class="btn" onclick="document.getElementById('importFile').click()">📤 Import</button>
                 <input type="file" id="importFile" accept=".json,.csv" style="display:none" onchange="importPortfolio(event)">
-                <button class="btn" onclick="syncToServer()" title="Save to server">💾 Save to Server</button>
-                <button class="btn" onclick="syncFromServer()" title="Load from server">☁️ Load from Server</button>
+                <button class="btn" onclick="syncToServer()" title="Save to server (local only)">💾 Local Save</button>
+                <button class="btn" onclick="syncFromServer()" title="Load from server (local only)">📂 Local Load</button>
             </div>
             <div style="background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:20px">
                 <div style="font-size:0.9rem;font-weight:600;margin-bottom:12px">➕ Add a holding:</div>

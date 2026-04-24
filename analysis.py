@@ -2157,6 +2157,169 @@ def calculate_goal(target_profit, months):
 # Stock Search — analyze any ticker on the fly
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Analyst Data — Consensus, Price Targets, Forward Estimates
+# ---------------------------------------------------------------------------
+
+_analyst_cache = {}
+_analyst_cache_ttl = 1800  # 30 minutes
+
+
+def get_analyst_data(ticker_str):
+    """
+    Fetch analyst consensus data for a ticker from yfinance.
+    Returns: {
+        buy_pct, hold_pct, sell_pct, total_analysts,
+        target_mean, target_high, target_low, target_upside_pct,
+        forward_pe, earnings_growth, revenue_growth,
+        recommendation_key (e.g. 'buy', 'hold', 'sell')
+    }
+    Returns empty dict if data unavailable (e.g. ETFs, crypto, commodities).
+    """
+    ticker = ticker_str.strip().upper()
+    now = datetime.now().timestamp()
+
+    # Check cache
+    if ticker in _analyst_cache:
+        cached, ts = _analyst_cache[ticker]
+        if now - ts < _analyst_cache_ttl:
+            return cached
+
+    result = {}
+    try:
+        t = yf.Ticker(ticker)
+
+        # --- Analyst Recommendations Summary ---
+        try:
+            rec = t.recommendations
+            if rec is not None and not rec.empty:
+                # Get the most recent period's data
+                latest = rec.iloc[-1] if len(rec) > 0 else None
+                if latest is not None:
+                    # yfinance returns columns like: strongBuy, buy, hold, sell, strongSell
+                    strong_buy = int(latest.get("strongBuy", 0) or 0)
+                    buy = int(latest.get("buy", 0) or 0)
+                    hold = int(latest.get("hold", 0) or 0)
+                    sell = int(latest.get("sell", 0) or 0)
+                    strong_sell = int(latest.get("strongSell", 0) or 0)
+
+                    total = strong_buy + buy + hold + sell + strong_sell
+                    if total > 0:
+                        result["analyst_buy"] = strong_buy + buy
+                        result["analyst_hold"] = hold
+                        result["analyst_sell"] = sell + strong_sell
+                        result["analyst_total"] = total
+                        result["analyst_buy_pct"] = round((strong_buy + buy) / total * 100, 1)
+                        result["analyst_hold_pct"] = round(hold / total * 100, 1)
+                        result["analyst_sell_pct"] = round((sell + strong_sell) / total * 100, 1)
+        except Exception:
+            pass
+
+        # --- Price Targets ---
+        try:
+            info = t.info or {}
+            target_mean = info.get("targetMeanPrice")
+            target_high = info.get("targetHighPrice")
+            target_low = info.get("targetLowPrice")
+            current_price = info.get("currentPrice") or info.get("regularMarketPrice")
+            rec_key = info.get("recommendationKey", "")
+
+            if target_mean and current_price and current_price > 0:
+                result["target_mean"] = round(float(target_mean), 2)
+                result["target_high"] = round(float(target_high), 2) if target_high else None
+                result["target_low"] = round(float(target_low), 2) if target_low else None
+                result["target_upside_pct"] = round(((float(target_mean) - float(current_price)) / float(current_price)) * 100, 1)
+
+            if rec_key:
+                result["recommendation_key"] = rec_key.lower()
+
+            # Forward P/E
+            forward_pe = info.get("forwardPE")
+            if forward_pe and forward_pe > 0:
+                result["forward_pe"] = round(float(forward_pe), 1)
+
+            # Trailing P/E for comparison
+            trailing_pe = info.get("trailingPE")
+            if trailing_pe and trailing_pe > 0:
+                result["trailing_pe"] = round(float(trailing_pe), 1)
+
+            # Earnings & Revenue Growth
+            earnings_growth = info.get("earningsGrowth")
+            if earnings_growth is not None:
+                result["earnings_growth_pct"] = round(float(earnings_growth) * 100, 1)
+
+            revenue_growth = info.get("revenueGrowth")
+            if revenue_growth is not None:
+                result["revenue_growth_pct"] = round(float(revenue_growth) * 100, 1)
+
+            # PEG Ratio
+            peg = info.get("pegRatio")
+            if peg and peg > 0:
+                result["peg_ratio"] = round(float(peg), 2)
+
+            # Number of analyst opinions
+            num_analysts = info.get("numberOfAnalystOpinions")
+            if num_analysts:
+                result["num_analyst_opinions"] = int(num_analysts)
+
+        except Exception:
+            pass
+
+    except Exception as e:
+        print(f"  ⚠️ Could not fetch analyst data for {ticker}: {e}")
+
+    # Cache result (even if empty, to avoid repeated failed lookups)
+    _analyst_cache[ticker] = (result, now)
+    return result
+
+
+def get_analyst_score_adjustment(analyst_data):
+    """
+    Calculate a score adjustment based on analyst consensus.
+    Returns a value between -20 and +20 to add to the technical score.
+    """
+    if not analyst_data:
+        return 0
+
+    adjustment = 0
+
+    # Analyst consensus scoring
+    buy_pct = analyst_data.get("analyst_buy_pct", 0)
+    sell_pct = analyst_data.get("analyst_sell_pct", 0)
+    total = analyst_data.get("analyst_total", 0)
+
+    if total >= 3:  # Need at least 3 analysts for meaningful consensus
+        if buy_pct >= 70:
+            adjustment += 15  # Strong consensus buy
+        elif buy_pct >= 50:
+            adjustment += 8   # Majority buy
+        elif sell_pct >= 50:
+            adjustment -= 12  # Majority sell
+        elif sell_pct >= 30:
+            adjustment -= 5   # Significant sell pressure
+
+    # Price target upside scoring
+    upside = analyst_data.get("target_upside_pct", 0)
+    if upside:
+        if upside >= 30:
+            adjustment += 10  # Huge upside expected
+        elif upside >= 15:
+            adjustment += 5   # Good upside
+        elif upside <= -15:
+            adjustment -= 10  # Analysts expect decline
+        elif upside <= -5:
+            adjustment -= 5   # Modest downside expected
+
+    # Forward P/E sanity check (very high = overvalued risk)
+    fpe = analyst_data.get("forward_pe", 0)
+    if fpe and fpe > 80:
+        adjustment -= 5  # Extremely expensive
+    elif fpe and fpe < 10 and buy_pct >= 40:
+        adjustment += 3  # Cheap with analyst support
+
+    return max(-20, min(20, adjustment))
+
+
 # Ticker aliases for common names (XAU -> XAUUSD=X, etc.)
 TICKER_ALIASES = {"XAU": "GC=F", "XAG": "SI=F", "XPT": "PL=F", "XPD": "PA=F", "GOLD": "GC=F", "SILVER": "SI=F", "XAUUSD=X": "GC=F", "XAGUSD=X": "SI=F", "XPTUSD=X": "PL=F", "XPDUSD=X": "PA=F"}
 
@@ -2164,6 +2327,7 @@ def search_ticker(ticker_str):
     """
     Search and analyze any Yahoo Finance ticker (not limited to the 200 list).
     Downloads 1 year of data for full analysis including 200-day SMA.
+    Now also fetches analyst consensus data (price targets, buy/hold/sell %).
     """
     ticker = ticker_str.strip().upper()
     ticker = TICKER_ALIASES.get(ticker, ticker)
@@ -2190,6 +2354,32 @@ def search_ticker(ticker_str):
         result["market"] = "Other"
 
     result["in_universe"] = ticker in US_STOCKS or ticker in EU_STOCKS
+
+    # --- Fetch analyst data (consensus, price targets, fundamentals) ---
+    try:
+        analyst = get_analyst_data(ticker)
+        if analyst:
+            result["analyst"] = analyst
+            # Adjust score based on analyst consensus
+            adj = get_analyst_score_adjustment(analyst)
+            if adj != 0:
+                old_score = result["score"]
+                result["score"] = max(-100, min(100, old_score + adj))
+                result["analyst_adjustment"] = adj
+                # Recalculate action based on new score
+                s = result["score"]
+                if s >= 50:
+                    result["action"] = "Strong Buy"
+                elif s >= 25:
+                    result["action"] = "Buy"
+                elif s >= 0:
+                    result["action"] = "Hold / Accumulate"
+                elif s >= -25:
+                    result["action"] = "Hold"
+                else:
+                    result["action"] = "Avoid / Sell"
+    except Exception:
+        pass
 
     return result
 
