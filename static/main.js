@@ -1582,6 +1582,8 @@ async function calcCompound() {
     <strong>${d.prob_profit}%</strong> chance of making a profit · Median profit: <strong class="${d.median_profit>=0?'positive':'negative'}">${fmtMoney(d.median_profit)}</strong> ·
     Range: <span class="negative">${fmtMoney(d.p10_profit)}</span> to <span class="positive">+${fmtMoney(d.p90_profit)}</span>
    </div>`;
+   // Render Monte Carlo chart
+   if (typeof renderCompoundChart === 'function') renderCompoundChart(d, 'montecarlo');
   } catch(err) { el.innerHTML=`<div class="error-msg">${err.message}</div>`; }
  } else {
   try {
@@ -1600,6 +1602,8 @@ async function calcCompound() {
    <div style="padding:12px 16px;background:var(--bg);border:1px solid var(--border);border-radius:10px;margin-top:12px;font-size:0.8rem;color:var(--text-secondary)">
     <strong>ℹ️ How scenarios work:</strong> Expected uses your set return (${annRt}%). Optimistic = 1.5× (${(annRt*1.5).toFixed(1)}%). Pessimistic = 0.5× (${(annRt*0.5).toFixed(1)}%). These are simple multipliers showing a range — not guarantees. Try <strong style="color:var(--accent);cursor:pointer" onclick="compoundMode='montecarlo';document.getElementById('mcToggle').classList.add('active');document.getElementById('simpleToggle').classList.remove('active');calcCompound()">🎲 Monte Carlo</strong> for a more realistic simulation.
    </div>`;
+   // Render simple compound chart
+   if (typeof renderCompoundChart === 'function') renderCompoundChart({expected:e,optimistic:o,pessimistic:p}, 'simple');
   } catch(err) { el.innerHTML=`<div class="error-msg">${err.message}</div>`; }
  }
 }
@@ -1616,7 +1620,7 @@ function selectProfile(profile, el) { currentProfile=profile; document.querySele
 
 async function loadPortfolio() { const a=document.getElementById('investmentAmount').value||10000,m=document.getElementById('timeframeMonths').value||12,c=document.getElementById('portfolioContent'); c.innerHTML='<div class="loading"><div class="spinner"></div><br>Building portfolio...</div>'; try{const r=await fetch(`/api/portfolio?profile=${currentProfile}&investment=${a}&months=${m}&tickers=0`);const j=await r.json();if(j.status!=='ok')throw new Error(j.message);renderPortfolio(j.data);dataLoaded['portfolios']=true;ts();}catch(e){c.innerHTML=`<div class="error-msg">${e.message}</div>`;} }
 
-function renderPortfolio(d) { lastPortfolioTabData=d; const c=document.getElementById('portfolioContent'); let h=`<div style="margin-bottom:20px"><h3>${d.name}</h3><p style="color:var(--text-muted);font-size:0.9rem">${d.description}</p><div style="display:flex;gap:12px;margin-top:8px;flex-wrap:wrap"><span class="badge badge-blue">Risk: ${d.risk_level}</span><span class="badge badge-green">Target: ${d.target_return}</span><span class="badge badge-yellow">Rebalance: ${d.rebalance}</span></div></div>`; if(d.simulation){const s=d.simulation;h+=`<div style="margin-bottom:12px"><strong> ${d.timeframe_label||'1y'} Projection</strong></div><div class="sim-stats"><div class="sim-stat"><div class="label">Invested</div><div class="value">${fmtMoney(d.investment)}</div></div><div class="sim-stat" style="border-color:var(--green)"><div class="label"> Optimistic</div><div class="value positive">${fmtMoney(s.optimistic_value)}</div></div><div class="sim-stat" style="border-color:var(--blue)"><div class="label"> Expected</div><div class="value">${fmtMoney(s.end_value)}</div></div><div class="sim-stat" style="border-color:var(--red)"><div class="label"> Pessimistic</div><div class="value">${fmtMoney(s.pessimistic_value)}</div></div></div>`;} h+='<div style="margin:16px 0"><strong>Allocation:</strong></div><div class="alloc-bar">'; d.buy_list.forEach((b,i)=>{h+=`<div class="alloc-segment" style="width:${b.target_pct}%;background:${COLORS[i%COLORS.length]}">${b.target_pct>5?b.target_pct+'%':''}</div>`;}); h+='</div><div class="alloc-legend">'; d.buy_list.forEach((b,i)=>{h+=`<div class="alloc-legend-item"><div class="alloc-dot" style="background:${COLORS[i%COLORS.length]}"></div>${b.ticker} (${b.target_pct}%)</div>`;}); h+=`</div><div style="margin-top:24px"><h3> Buy List:</h3></div><div class="table-wrap"><table><thead><tr><th>Ticker</th><th>Name</th><th>%</th><th>Price</th><th>Shares</th><th>Cost</th><th>Why</th></tr></thead><tbody>`; d.buy_list.forEach(b=>{h+=`<tr><td><strong>${b.ticker}</strong></td><td>${b.name}</td><td>${b.target_pct}%</td><td>${b.price?fmtMoney(b.price):'N/A'}</td><td style="font-weight:700;color:var(--accent)">${b.shares_to_buy.toFixed(4)}</td><td>${fmtMoney(b.cost)}</td><td style="font-size:0.8rem;color:var(--text-muted)">${b.why}</td></tr>`;}); h+=`</tbody></table></div><div style="margin-top:16px;padding:16px;background:var(--bg);border:1px solid var(--border);border-radius:10px"><strong>Total:</strong> ${fmtMoney(d.total_allocated)} | <strong>Cash:</strong> ${fmtMoney(d.cash_remaining)}</div>`; c.innerHTML=h; }
+function renderPortfolio(d) { lastPortfolioTabData=d; const c=document.getElementById('portfolioContent'); let h=`<div style="margin-bottom:20px"><h3>${d.name}</h3><p style="color:var(--text-muted);font-size:0.9rem">${d.description}</p><div style="display:flex;gap:12px;margin-top:8px;flex-wrap:wrap"><span class="badge badge-blue">Risk: ${d.risk_level}</span><span class="badge badge-green">Target: ${d.target_return}</span><span class="badge badge-yellow">Rebalance: ${d.rebalance}</span></div></div>`; if(d.simulation){const s=d.simulation;h+=`<div style="margin-bottom:12px"><strong> ${d.timeframe_label||'1y'} Projection</strong></div><div class="sim-stats"><div class="sim-stat"><div class="label">Invested</div><div class="value">${fmtMoney(d.investment)}</div></div><div class="sim-stat" style="border-color:var(--green)"><div class="label"> Optimistic</div><div class="value positive">${fmtMoney(s.optimistic_value)}</div></div><div class="sim-stat" style="border-color:var(--blue)"><div class="label"> Expected</div><div class="value">${fmtMoney(s.end_value)}</div></div><div class="sim-stat" style="border-color:var(--red)"><div class="label"> Pessimistic</div><div class="value">${fmtMoney(s.pessimistic_value)}</div></div></div>`;} h+='<div style="margin:16px 0"><strong>Allocation:</strong></div><div class="alloc-bar">'; d.buy_list.forEach((b,i)=>{h+=`<div class="alloc-segment" style="width:${b.target_pct}%;background:${COLORS[i%COLORS.length]}">${b.target_pct>5?b.target_pct+'%':''}</div>`;}); h+='</div><div class="alloc-legend">'; d.buy_list.forEach((b,i)=>{h+=`<div class="alloc-legend-item"><div class="alloc-dot" style="background:${COLORS[i%COLORS.length]}"></div>${b.ticker} (${b.target_pct}%)</div>`;}); h+=`</div><div style="margin-top:24px"><h3> Buy List:</h3></div><div class="table-wrap"><table><thead><tr><th>Ticker</th><th>Name</th><th>%</th><th>Price</th><th>Shares</th><th>Cost</th><th>Why</th></tr></thead><tbody>`; d.buy_list.forEach(b=>{h+=`<tr><td><strong>${b.ticker}</strong></td><td>${b.name}</td><td>${b.target_pct}%</td><td>${b.price?fmtMoney(b.price):'N/A'}</td><td style="font-weight:700;color:var(--accent)">${b.shares_to_buy.toFixed(4)}</td><td>${fmtMoney(b.cost)}</td><td style="font-size:0.8rem;color:var(--text-muted)">${b.why}</td></tr>`;}); h+=`</tbody></table></div><div style="margin-top:16px;padding:16px;background:var(--bg);border:1px solid var(--border);border-radius:10px"><strong>Total:</strong> ${fmtMoney(d.total_allocated)} | <strong>Cash:</strong> ${fmtMoney(d.cash_remaining)}</div>`; c.innerHTML=h; if(d.simulation && typeof renderPortfolioChart === 'function') renderPortfolioChart(d.simulation); }
 
 
 
@@ -2055,6 +2059,136 @@ function selectAutocomplete(ticker) {
     searchTicker(ticker);
 }
 
+
+
+// ============================================================
+// CHARTS — Chart.js visualizations
+// ============================================================
+var compoundChart = null;
+var portfolioChart = null;
+
+function renderCompoundChart(data, mode) {
+    // Destroy previous chart if exists
+    if (compoundChart) { compoundChart.destroy(); compoundChart = null; }
+
+    // Create canvas if not exists
+    var container = document.getElementById('compoundResult');
+    var existingCanvas = document.getElementById('compoundChartCanvas');
+    if (existingCanvas) existingCanvas.parentElement.remove();
+
+    var wrapper = document.createElement('div');
+    wrapper.style.cssText = 'margin-top:16px;padding:16px;background:var(--bg);border:1px solid var(--border);border-radius:12px;position:relative;height:280px';
+    wrapper.innerHTML = '<canvas id="compoundChartCanvas"></canvas>';
+    container.appendChild(wrapper);
+
+    var ctx = document.getElementById('compoundChartCanvas').getContext('2d');
+    var datasets = [];
+    var labels = [];
+
+    if (mode === 'montecarlo') {
+        var mc = data;
+        labels = mc.median_path.map(function(p) { return 'M' + p.month; });
+        datasets = [
+            { label: '90th Percentile (Best 10%)', data: mc.p90_path.map(function(p){return p.value;}), borderColor: '#34C759', backgroundColor: 'rgba(52,199,89,0.08)', borderWidth: 1.5, pointRadius: 0, fill: '+1', tension: 0.3 },
+            { label: 'Median (Most Likely)', data: mc.median_path.map(function(p){return p.value;}), borderColor: '#007AFF', backgroundColor: 'rgba(0,122,255,0.05)', borderWidth: 2.5, pointRadius: 0, fill: false, tension: 0.3 },
+            { label: '10th Percentile (Worst 10%)', data: mc.p10_path.map(function(p){return p.value;}), borderColor: '#FF3B30', backgroundColor: 'rgba(255,59,48,0.08)', borderWidth: 1.5, pointRadius: 0, fill: '-1', tension: 0.3 },
+            { label: 'Total Invested', data: mc.median_path.map(function(p,i){return mc.median_path[0].value + (mc.median_path[mc.median_path.length-1].value > mc.median_path[0].value ? (mc.total_invested - mc.median_path[0].value) * i / (mc.median_path.length-1) : 0);}), borderColor: '#86868b', backgroundColor: 'transparent', borderWidth: 1, borderDash: [5,5], pointRadius: 0, fill: false, tension: 0 }
+        ];
+        // Fix invested line to use actual invested amounts
+        var initVal = mc.median_path[0].value;
+        var monthlyContrib = (mc.total_invested - initVal) / (mc.median_path.length - 1);
+        datasets[3].data = mc.median_path.map(function(p, i) { return Math.round((initVal + monthlyContrib * i) * 100) / 100; });
+    } else {
+        var e = data.expected, o = data.optimistic, p = data.pessimistic;
+        labels = e.data.map(function(d) { return 'M' + d.month; });
+        datasets = [
+            { label: 'Optimistic', data: o.data.map(function(d){return d.value;}), borderColor: '#34C759', backgroundColor: 'rgba(52,199,89,0.08)', borderWidth: 1.5, pointRadius: 0, fill: '+1', tension: 0.3 },
+            { label: 'Expected', data: e.data.map(function(d){return d.value;}), borderColor: '#007AFF', backgroundColor: 'rgba(0,122,255,0.05)', borderWidth: 2.5, pointRadius: 0, fill: false, tension: 0.3 },
+            { label: 'Pessimistic', data: p.data.map(function(d){return d.value;}), borderColor: '#FF3B30', backgroundColor: 'rgba(255,59,48,0.08)', borderWidth: 1.5, pointRadius: 0, fill: '-1', tension: 0.3 },
+            { label: 'Total Invested', data: e.data.map(function(d){return d.invested;}), borderColor: '#86868b', backgroundColor: 'transparent', borderWidth: 1, borderDash: [5,5], pointRadius: 0, fill: false, tension: 0 }
+        ];
+    }
+
+    // Reduce labels for readability
+    var step = Math.max(1, Math.floor(labels.length / 12));
+    var displayLabels = labels.map(function(l, i) { return i % step === 0 ? l : ''; });
+
+    compoundChart = new Chart(ctx, {
+        type: 'line',
+        data: { labels: displayLabels, datasets: datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: { position: 'bottom', labels: { boxWidth: 12, padding: 12, font: { size: 11 }, color: '#86868b' } },
+                tooltip: {
+                    backgroundColor: 'rgba(29,29,31,0.95)', titleColor: '#fff', bodyColor: '#fff', borderColor: '#d2d2d7', borderWidth: 1, padding: 10,
+                    callbacks: { label: function(ctx) { return ctx.dataset.label + ': ' + fmtMoney(ctx.raw); } }
+                }
+            },
+            scales: {
+                x: { grid: { display: false }, ticks: { color: '#aeaeb2', font: { size: 10 }, maxRotation: 0 } },
+                y: { grid: { color: 'rgba(210,210,215,0.3)' }, ticks: { color: '#aeaeb2', font: { size: 10 }, callback: function(v) { return fmtMoney(v); } } }
+            }
+        }
+    });
+}
+
+function renderPortfolioChart(simulation) {
+    if (!simulation || !simulation.monthly_data) return;
+
+    // Destroy previous chart
+    if (portfolioChart) { portfolioChart.destroy(); portfolioChart = null; }
+
+    var container = document.getElementById('portfolioContent');
+    var existingCanvas = document.getElementById('portfolioChartCanvas');
+    if (existingCanvas) existingCanvas.parentElement.remove();
+
+    var wrapper = document.createElement('div');
+    wrapper.id = 'portfolioChartCanvas';
+    wrapper.style.cssText = 'margin-top:16px;margin-bottom:16px;padding:16px;background:var(--bg);border:1px solid var(--border);border-radius:12px;position:relative;height:260px';
+    wrapper.innerHTML = '<canvas id="portChartCtx"></canvas>';
+
+    // Insert after sim-stats
+    var simStats = container.querySelector('.sim-stats');
+    if (simStats) simStats.after(wrapper);
+    else container.prepend(wrapper);
+
+    var ctx = document.getElementById('portChartCtx').getContext('2d');
+    var labels = simulation.monthly_data.map(function(d) { return d.date.substring(5); }); // MM-DD
+    var step = Math.max(1, Math.floor(labels.length / 8));
+    var displayLabels = labels.map(function(l, i) { return i % step === 0 ? l : ''; });
+
+    portfolioChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: displayLabels,
+            datasets: [
+                { label: 'Optimistic', data: simulation.optimistic_data.map(function(d){return d.value;}), borderColor: '#34C759', backgroundColor: 'rgba(52,199,89,0.06)', borderWidth: 1.5, pointRadius: 0, fill: '+1', tension: 0.3 },
+                { label: 'Expected', data: simulation.monthly_data.map(function(d){return d.value;}), borderColor: '#007AFF', backgroundColor: 'rgba(0,122,255,0.04)', borderWidth: 2.5, pointRadius: 0, fill: false, tension: 0.3 },
+                { label: 'Pessimistic', data: simulation.pessimistic_data.map(function(d){return d.value;}), borderColor: '#FF3B30', backgroundColor: 'rgba(255,59,48,0.06)', borderWidth: 1.5, pointRadius: 0, fill: '-1', tension: 0.3 },
+                { label: 'Invested', data: simulation.monthly_data.map(function(){return simulation.start_value;}), borderColor: '#86868b', backgroundColor: 'transparent', borderWidth: 1, borderDash: [5,5], pointRadius: 0, fill: false }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: { position: 'bottom', labels: { boxWidth: 12, padding: 12, font: { size: 11 }, color: '#86868b' } },
+                tooltip: {
+                    backgroundColor: 'rgba(29,29,31,0.95)', titleColor: '#fff', bodyColor: '#fff', borderColor: '#d2d2d7', borderWidth: 1, padding: 10,
+                    callbacks: { label: function(ctx) { return ctx.dataset.label + ': ' + fmtMoney(ctx.raw); } }
+                }
+            },
+            scales: {
+                x: { grid: { display: false }, ticks: { color: '#aeaeb2', font: { size: 10 }, maxRotation: 0 } },
+                y: { grid: { color: 'rgba(210,210,215,0.3)' }, ticks: { color: '#aeaeb2', font: { size: 10 }, callback: function(v) { return fmtMoney(v); } } }
+            }
+        }
+    });
+}
 
 
 // ============================================================
