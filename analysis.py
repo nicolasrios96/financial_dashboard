@@ -490,9 +490,9 @@ def _safe_download_daterange(ticker, start, end, interval="1d"):
 
 def _batch_download(tickers, period="3mo", interval="1d"):
     """Download data for multiple tickers using threading with retries.
-    Uses 20 workers for faster fetching of 500+ tickers."""
+    Uses 10 workers to balance speed vs Yahoo Finance rate limits."""
     results = {}
-    with ThreadPoolExecutor(max_workers=20) as executor:
+    with ThreadPoolExecutor(max_workers=10) as executor:
         futures = {
             executor.submit(_safe_download, t, period, interval): t
             for t in tickers
@@ -1374,6 +1374,7 @@ def get_todays_actions(investment=1000, strategy="best"):
     quick_buys = []  # High momentum, short-term
     long_buys = []   # Undervalued, long-term
     sells = []       # Stocks to avoid/sell
+    all_scores = []  # Collect scores here to avoid re-analyzing later
 
     for ticker in tickers:
         df = data.get(ticker)
@@ -1383,6 +1384,7 @@ def get_todays_actions(investment=1000, strategy="best"):
         if result is None:
             continue
 
+        all_scores.append(result["score"])  # Cache score for sentiment calc
         result["market"] = "US" if ticker in US_STOCKS else "EU"
 
         # Classify into quick/long/sell
@@ -1518,15 +1520,7 @@ def get_todays_actions(investment=1000, strategy="best"):
             "pct_1m": s["pct_1m"],
         })
 
-    # Market sentiment summary
-    all_scores = []
-    for ticker in tickers:
-        df = data.get(ticker)
-        if df is not None:
-            r = analyze_stock(ticker, df)
-            if r:
-                all_scores.append(r["score"])
-
+    # Market sentiment summary (reuses scores collected in first loop — no re-analysis)
     avg_score = np.mean(all_scores) if all_scores else 0
     if avg_score > 20:
         sentiment = {"label": "🟢 Bullish", "color": "green", "desc": "Markets look strong — good time to buy"}

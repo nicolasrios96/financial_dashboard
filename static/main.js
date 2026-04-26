@@ -1489,7 +1489,7 @@ async function syncFromServer() { try{const r=await fetch('/api/portfolio-data')
 async function pinSave() {
  var pinEl = document.getElementById('pinInput');
  var pin = (pinEl ? pinEl.value : '').trim();
- if (!pin || pin.length < 4) { showToast('Enter a PIN (4+ characters)', 'error'); return; }
+ if (!pin || pin.length < 6) { showToast('Enter a PIN (6+ characters)', 'error'); return; }
  if (!myPortfolio.length && !myTradeHistory.length) { showToast('No portfolio data to save', 'info'); return; }
  try {
   var r = await fetch('/api/portfolio-pin/save', {
@@ -1507,7 +1507,7 @@ async function pinSave() {
 async function pinLoad() {
  var pinEl = document.getElementById('pinInput');
  var pin = (pinEl ? pinEl.value : '').trim();
- if (!pin || pin.length < 4) { showToast('Enter your PIN (4+ characters)', 'error'); return; }
+ if (!pin || pin.length < 6) { showToast('Enter your PIN (6+ characters)', 'error'); return; }
  try {
   var r = await fetch('/api/portfolio-pin/load', {
    method: 'POST', headers: {'Content-Type':'application/json'},

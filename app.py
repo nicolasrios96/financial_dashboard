@@ -38,10 +38,22 @@ import math
 import json
 import os
 import sqlite3
-import hashlib
+import bcrypt
 from datetime import datetime
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
 app = Flask(__name__)
+
+# ---------------------------------------------------------------------------
+# Rate limiter — prevents brute-force attacks on PIN endpoints
+# ---------------------------------------------------------------------------
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=[],  # No global limit — only applied to specific endpoints
+    storage_uri="memory://",
+)
 
 # Cache to avoid hammering the API on every page load
 _cache = {}
@@ -911,12 +923,55 @@ def _init_db():
     conn.close()
 
 
-def _hash_pin(pin):
-    """Hash a PIN for storage (SHA-256). PIN is case-insensitive."""
-    return hashlib.sha256(pin.strip().lower().encode("utf-8")).hexdigest()
+def _hash_pin_bcrypt(pin):
+    """Hash a PIN using bcrypt (salted + slow). PIN is case-insensitive."""
+    normalized = pin.strip().lower().encode("utf-8")
+    return bcrypt.hashpw(normalized, bcrypt.gensalt()).decode("utf-8")
+
+
+def _verify_pin_bcrypt(pin, stored_hash):
+    """Verify a PIN against a bcrypt hash."""
+    normalized = pin.strip().lower().encode("utf-8")
+    return bcrypt.checkpw(normalized, stored_hash.encode("utf-8"))
+
+
+# In-memory failed attempt tracker {ip: {count, last_attempt_ts}}
+_pin_fail_tracker = {}
+_PIN_MAX_FAILS = 5
+_PIN_LOCKOUT_SECONDS = 900  # 15 minutes
+
+
+def _check_pin_lockout(ip):
+    """Check if an IP is locked out from PIN attempts. Returns (locked, message)."""
+    if ip in _pin_fail_tracker:
+        info = _pin_fail_tracker[ip]
+        elapsed = datetime.now().timestamp() - info["last_attempt"]
+        if info["count"] >= _PIN_MAX_FAILS and elapsed < _PIN_LOCKOUT_SECONDS:
+            remaining = int(_PIN_LOCKOUT_SECONDS - elapsed)
+            return True, f"Too many failed attempts. Try again in {remaining // 60} min {remaining % 60}s."
+        # Reset if lockout period has passed
+        if elapsed >= _PIN_LOCKOUT_SECONDS:
+            del _pin_fail_tracker[ip]
+    return False, ""
+
+
+def _record_pin_failure(ip):
+    """Record a failed PIN attempt for an IP."""
+    now = datetime.now().timestamp()
+    if ip in _pin_fail_tracker:
+        _pin_fail_tracker[ip]["count"] += 1
+        _pin_fail_tracker[ip]["last_attempt"] = now
+    else:
+        _pin_fail_tracker[ip] = {"count": 1, "last_attempt": now}
+
+
+def _clear_pin_failures(ip):
+    """Clear failed attempts after a successful PIN load."""
+    _pin_fail_tracker.pop(ip, None)
 
 
 @app.route("/api/portfolio-pin/save", methods=["POST"])
+@limiter.limit("10 per minute")
 def api_pin_save():
     """Save portfolio data with a PIN code for cross-device access."""
     try:
@@ -925,56 +980,84 @@ def api_pin_save():
         holdings = body.get("holdings", [])
         trade_history = body.get("trade_history", [])
 
-        if not pin or len(pin) < 4 or len(pin) > 20:
-            return safe_jsonify({"status": "error", "message": "PIN must be 4-20 characters."}, 400)
+        if not pin or len(pin) < 6 or len(pin) > 20:
+            return safe_jsonify({"status": "error", "message": "PIN must be 6-20 characters."}, 400)
 
         # Limit sizes
         holdings = holdings[:50]
         trade_history = trade_history[:500]
 
-        pin_hash = _hash_pin(pin)
+        pin_hash = _hash_pin_bcrypt(pin)
         data = json.dumps({"holdings": holdings, "trade_history": trade_history}, ensure_ascii=False)
 
         _init_db()
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
+        # Delete any existing entry for this PIN (we can't lookup by hash with bcrypt,
+        # so we store a "pin_id" derived from the first 8 chars of the PIN for lookup)
+        # Actually, with bcrypt we need a different approach: store the hash and iterate.
+        # For simplicity with small user base: store pin_id (truncated sha256) for lookup,
+        # and bcrypt hash for verification.
+        import hashlib
+        pin_id = hashlib.sha256(pin.strip().lower().encode("utf-8")).hexdigest()[:16]
         c.execute(
             "INSERT OR REPLACE INTO portfolios (pin_hash, data, updated_at) VALUES (?, ?, ?)",
-            (pin_hash, data, datetime.now().isoformat())
+            (pin_id + "|" + pin_hash, data, datetime.now().isoformat())
         )
         conn.commit()
         conn.close()
 
-        return safe_jsonify({"status": "ok", "message": f"Portfolio saved with PIN! Use the same PIN on any device to load it."})
+        return safe_jsonify({"status": "ok", "message": "Portfolio saved with PIN! Use the same PIN on any device to load it."})
     except Exception as e:
         traceback.print_exc()
         return safe_jsonify({"status": "error", "message": str(e)}, 500)
 
 
 @app.route("/api/portfolio-pin/load", methods=["POST"])
+@limiter.limit("5 per minute")
 def api_pin_load():
     """Load portfolio data using a PIN code."""
     try:
+        # Check IP-based lockout (on top of flask-limiter)
+        client_ip = get_remote_address()
+        locked, lock_msg = _check_pin_lockout(client_ip)
+        if locked:
+            return safe_jsonify({"status": "error", "message": lock_msg}, 429)
+
         body = request.get_json(force=True)
         pin = str(body.get("pin", "")).strip()
 
-        if not pin or len(pin) < 4:
-            return safe_jsonify({"status": "error", "message": "Enter your PIN (4+ characters)."}, 400)
+        if not pin or len(pin) < 6:
+            return safe_jsonify({"status": "error", "message": "Enter your PIN (6+ characters)."}, 400)
 
-        pin_hash = _hash_pin(pin)
+        # Generate the pin_id for lookup (fast SHA-256 prefix)
+        import hashlib
+        pin_id = hashlib.sha256(pin.strip().lower().encode("utf-8")).hexdigest()[:16]
 
         _init_db()
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
-        c.execute("SELECT data, updated_at FROM portfolios WHERE pin_hash = ?", (pin_hash,))
+        # Look up by pin_id prefix
+        c.execute("SELECT pin_hash, data, updated_at FROM portfolios WHERE pin_hash LIKE ?", (pin_id + "|%",))
         row = c.fetchone()
         conn.close()
 
         if not row:
+            _record_pin_failure(client_ip)
             return safe_jsonify({"status": "error", "message": "No portfolio found for this PIN. Check your PIN or save first."}, 404)
 
-        data = json.loads(row[0])
-        updated_at = row[1]
+        # Verify bcrypt hash
+        stored_combined = row[0]  # "pin_id|bcrypt_hash"
+        bcrypt_hash = stored_combined.split("|", 1)[1] if "|" in stored_combined else stored_combined
+        if not _verify_pin_bcrypt(pin, bcrypt_hash):
+            _record_pin_failure(client_ip)
+            return safe_jsonify({"status": "error", "message": "Invalid PIN."}, 403)
+
+        # Success — clear failure tracker
+        _clear_pin_failures(client_ip)
+
+        data = json.loads(row[1])
+        updated_at = row[2]
 
         return safe_jsonify({
             "status": "ok",
@@ -994,6 +1077,41 @@ def api_clear_cache():
 
 
 # ---------------------------------------------------------------------------
+# Background cache warming — pre-fetch key data on startup
+# ---------------------------------------------------------------------------
+
+def _warm_cache():
+    """Pre-fetch market overview and top recommendations in the background.
+    This runs once at startup so the first user request hits cached data
+    instead of waiting 15-30 seconds for a cold fetch."""
+    import threading
+    import time as _time
+
+    def _do_warm():
+        _time.sleep(2)  # Wait for server to fully start
+        print("  🔥 Cache warming: fetching market overview...")
+        try:
+            data = get_market_overview()
+            _cache["market_overview"] = (data, datetime.now().timestamp())
+            print("  ✅ Market overview cached")
+        except Exception as e:
+            print(f"  ⚠️ Cache warm failed (market overview): {e}")
+
+        print("  🔥 Cache warming: fetching top recommendations...")
+        try:
+            data = get_recommendations(market="all", top_n=10)
+            _cache["recommendations_all_10"] = (data, datetime.now().timestamp())
+            print(f"  ✅ Recommendations cached ({len(data)} picks)")
+        except Exception as e:
+            print(f"  ⚠️ Cache warm failed (recommendations): {e}")
+
+        print("  🔥 Cache warming complete!")
+
+    t = threading.Thread(target=_do_warm, daemon=True)
+    t.start()
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -1007,6 +1125,10 @@ def get_local_ip():
         return ip
     except Exception:
         return "127.0.0.1"
+
+
+# Warm cache on startup (works with both gunicorn and python app.py)
+_warm_cache()
 
 
 if __name__ == "__main__":
