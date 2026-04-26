@@ -94,7 +94,7 @@ STOCK_NAMES = {
     # ===== NEW: Additional S&P 500 stocks =====
     "ABBV": "AbbVie Inc.", "WFC": "Wells Fargo", "PM": "Philip Morris Intl.",
     "CMCSA": "Comcast Corp.", "NEE": "NextEra Energy", "IBM": "IBM Corp.",
-    "GE": "GE Aerospace", "INTU": "Intuit Inc.", "SPGI": "S&P Global",
+    "INTU": "Intuit Inc.", "SPGI": "S&P Global",
     "DHR": "Danaher Corp.", "SYK": "Stryker Corp.", "MDT": "Medtronic plc",
     "CI": "Cigna Group", "ELV": "Elevance Health", "CB": "Chubb Ltd.",
     "SO": "Southern Company", "DUK": "Duke Energy", "ICE": "Intercontinental Exchange",
