@@ -6,6 +6,11 @@ Uses yfinance data + Groq AI for intelligent analysis.
 
 Stock Universe: 500+ tickers across US, EU, Crypto, and Commodities.
 AI Integration: Groq (Llama 3.3 70B) for sentiment analysis and reasoning.
+
+Module structure:
+  config.py     — Stock lists, names, indices, sectors, commodities, portfolios
+  ai_engine.py  — Groq AI client, analysis, scoring
+  analysis.py   — Technical analysis, market data, portfolio logic (this file)
 """
 
 import yfinance as yf
@@ -19,6 +24,20 @@ import time
 import ssl
 import os
 import certifi
+
+# Import configuration data from config.py
+from config import (
+    STOCK_NAMES, US_STOCKS, EU_STOCKS, CRYPTO_STOCKS,
+    US_INDICES, EU_INDICES, SECTOR_ETFS,
+    COMMODITY_FUTURES, COMMODITY_ETFS,
+    PORTFOLIOS, TICKER_ALIASES,
+)
+
+# Import AI engine from ai_engine.py
+from ai_engine import (
+    _get_groq_client, ai_is_available, ai_analyze_stocks,
+    ai_analyze_single, combine_scores,
+)
 
 # ---------------------------------------------------------------------------
 # SSL / macOS fix — ensure Python uses proper certificates
