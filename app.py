@@ -901,26 +901,56 @@ def api_analyst():
 
 
 # ---------------------------------------------------------------------------
-# PIN-Based Portfolio Persistence (SQLite — works across devices)
+# PIN-Based Portfolio Persistence (PostgreSQL on Render, SQLite locally)
 # ---------------------------------------------------------------------------
 
-DB_PATH = os.path.join(DATA_DIR, "portfolios.db")
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
+DB_PATH = os.path.join(DATA_DIR, "portfolios.db")  # SQLite fallback
+
+# Fix Render's postgres:// -> postgresql:// (required by psycopg2)
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+
+def _use_postgres():
+    """Check if PostgreSQL is available (DATABASE_URL set)."""
+    return bool(DATABASE_URL)
+
+
+def _get_db_conn():
+    """Get a database connection — PostgreSQL if available, SQLite otherwise."""
+    if _use_postgres():
+        import psycopg2
+        return psycopg2.connect(DATABASE_URL)
+    else:
+        _ensure_data_dir()
+        return sqlite3.connect(DB_PATH)
 
 
 def _init_db():
-    """Initialize SQLite database for PIN-based portfolio storage."""
-    _ensure_data_dir()
-    conn = sqlite3.connect(DB_PATH)
+    """Initialize database for PIN-based portfolio storage."""
+    conn = _get_db_conn()
     c = conn.cursor()
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS portfolios (
-            pin_hash TEXT PRIMARY KEY,
-            data TEXT NOT NULL,
-            updated_at TEXT NOT NULL
-        )
-    """)
+    if _use_postgres():
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS portfolios (
+                pin_hash TEXT PRIMARY KEY,
+                data TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+        """)
+    else:
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS portfolios (
+                pin_hash TEXT PRIMARY KEY,
+                data TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+        """)
     conn.commit()
     conn.close()
+    db_type = "PostgreSQL" if _use_postgres() else "SQLite"
+    print(f"  💾 Database initialized: {db_type}")
 
 
 def _hash_pin_bcrypt(pin):
@@ -991,19 +1021,25 @@ def api_pin_save():
         data = json.dumps({"holdings": holdings, "trade_history": trade_history}, ensure_ascii=False)
 
         _init_db()
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        # Delete any existing entry for this PIN (we can't lookup by hash with bcrypt,
-        # so we store a "pin_id" derived from the first 8 chars of the PIN for lookup)
-        # Actually, with bcrypt we need a different approach: store the hash and iterate.
-        # For simplicity with small user base: store pin_id (truncated sha256) for lookup,
-        # and bcrypt hash for verification.
         import hashlib
         pin_id = hashlib.sha256(pin.strip().lower().encode("utf-8")).hexdigest()[:16]
-        c.execute(
-            "INSERT OR REPLACE INTO portfolios (pin_hash, data, updated_at) VALUES (?, ?, ?)",
-            (pin_id + "|" + pin_hash, data, datetime.now().isoformat())
-        )
+        combined_hash = pin_id + "|" + pin_hash
+
+        conn = _get_db_conn()
+        c = conn.cursor()
+        if _use_postgres():
+            # PostgreSQL: use ON CONFLICT for upsert
+            c.execute(
+                "INSERT INTO portfolios (pin_hash, data, updated_at) VALUES (%s, %s, %s) "
+                "ON CONFLICT (pin_hash) DO UPDATE SET data = EXCLUDED.data, updated_at = EXCLUDED.updated_at",
+                (combined_hash, data, datetime.now().isoformat())
+            )
+        else:
+            # SQLite: use INSERT OR REPLACE
+            c.execute(
+                "INSERT OR REPLACE INTO portfolios (pin_hash, data, updated_at) VALUES (?, ?, ?)",
+                (combined_hash, data, datetime.now().isoformat())
+            )
         conn.commit()
         conn.close()
 
@@ -1035,10 +1071,13 @@ def api_pin_load():
         pin_id = hashlib.sha256(pin.strip().lower().encode("utf-8")).hexdigest()[:16]
 
         _init_db()
-        conn = sqlite3.connect(DB_PATH)
+        conn = _get_db_conn()
         c = conn.cursor()
         # Look up by pin_id prefix
-        c.execute("SELECT pin_hash, data, updated_at FROM portfolios WHERE pin_hash LIKE ?", (pin_id + "|%",))
+        if _use_postgres():
+            c.execute("SELECT pin_hash, data, updated_at FROM portfolios WHERE pin_hash LIKE %s", (pin_id + "|%",))
+        else:
+            c.execute("SELECT pin_hash, data, updated_at FROM portfolios WHERE pin_hash LIKE ?", (pin_id + "|%",))
         row = c.fetchone()
         conn.close()
 

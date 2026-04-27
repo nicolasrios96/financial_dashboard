@@ -1,3 +1,9 @@
+databases:
+  - name: financial-dashboard-db
+    plan: free
+    databaseName: financial_dashboard
+    user: dashboard
+
 services:
   - type: web
     name: financial-dashboard
@@ -9,4 +15,8 @@ services:
         value: 3.11.0
       - key: GROQ_API_KEY
         sync: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: financial-dashboard-db
+          property: connectionString
     plan: free
