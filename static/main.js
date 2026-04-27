@@ -291,32 +291,73 @@ function urgencyBadge(u) { if (u==='Act now') return '<span class="urgency urgen
 
 
 // ============================================================
-
-// SEARCH Any ticker
-
+// SEARCH — Autocomplete while typing, Yahoo search on Enter/tap
 // ============================================================
 
+var acTimeout = null;
+
 document.getElementById('searchInput').addEventListener('input', function() {
-
- clearTimeout(searchTimeout);
-
- const val = this.value.trim().toUpperCase();
-
- if (val.length < 1) { document.getElementById('searchResult').style.display = 'none'; return; }
-
- searchTimeout = setTimeout(() => searchTicker(val), 600);
-
+    clearTimeout(searchTimeout);
+    clearTimeout(acTimeout);
+    var val = this.value.trim();
+    if (val.length < 1) { document.getElementById('searchResult').style.display = 'none'; return; }
+    // Only show autocomplete suggestions while typing (no Yahoo fetch)
+    acTimeout = setTimeout(function() { fetchAutocomplete(val); }, 150);
 });
 
 document.getElementById('searchInput').addEventListener('keydown', function(e) {
-
- if (e.key === 'Enter') { clearTimeout(searchTimeout); const val = this.value.trim().toUpperCase(); if (val) searchTicker(val); }
-
- if (e.key === 'Escape') { document.getElementById('searchResult').style.display = 'none'; this.blur(); }
-
+    if (e.key === 'Enter') {
+        clearTimeout(searchTimeout);
+        clearTimeout(acTimeout);
+        var val = this.value.trim().toUpperCase();
+        if (val) searchTicker(val);
+    }
+    if (e.key === 'Escape') {
+        document.getElementById('searchResult').style.display = 'none';
+        this.blur();
+    }
 });
 
 document.addEventListener('click', function(e) { if (!e.target.closest('.search-bar')) document.getElementById('searchResult').style.display = 'none'; });
+
+async function fetchAutocomplete(query) {
+    try {
+        var r = await fetch('/api/autocomplete?q=' + encodeURIComponent(query));
+        var j = await r.json();
+        if (j.status !== 'ok' || !j.results || j.results.length === 0) return;
+        var el = document.getElementById('searchResult');
+        el.style.display = 'block';
+        var hasLocal = j.results.some(function(item) { return item.source === 'local'; });
+        var hasYahoo = j.results.some(function(item) { return item.source === 'yahoo'; });
+        var h = '<div class="ac-header">Suggestions (tap to search):</div>';
+        var shownYahooHeader = false;
+        j.results.forEach(function(item) {
+            // Show a separator before Yahoo results
+            if (item.source === 'yahoo' && !shownYahooHeader) {
+                shownYahooHeader = true;
+                if (hasLocal) h += '<div class="ac-divider">Yahoo Finance results:</div>';
+            }
+            var typeBadge = '';
+            if (item.source === 'yahoo') {
+                var typeLabel = item.type === 'etf' ? 'ETF' : item.type === 'cryptocurrency' ? 'Crypto' : item.type === 'mutualfund' ? 'Fund' : '';
+                if (typeLabel) typeBadge = ' <span class="ac-type-badge">' + typeLabel + '</span>';
+            }
+            h += '<div class="ac-item" onclick="selectAutocomplete(\'' + item.ticker + '\')">';
+            h += '<div><strong class="ac-ticker">' + item.ticker + '</strong>';
+            h += ' <span class="ac-name">' + item.name + '</span>' + typeBadge + '</div>';
+            h += '<span class="ac-action">' + (item.source === 'yahoo' ? '🌐 Search ›' : 'Search ›') + '</span>';
+            h += '</div>';
+        });
+        el.innerHTML = h;
+    } catch(e) {}
+}
+
+function selectAutocomplete(ticker) {
+    clearTimeout(searchTimeout);
+    clearTimeout(acTimeout);
+    document.getElementById('searchInput').value = ticker;
+    searchTicker(ticker);
+}
 
 
 
@@ -2015,49 +2056,6 @@ renderActions = function(d) {
 
 
 
-// ============================================================
-// AUTOCOMPLETE — Search by ticker OR name
-// ============================================================
-var acTimeout = null;
-var searchInputEl = document.getElementById('searchInput');
-searchInputEl.removeEventListener('input', searchInputEl._oldHandler || function(){});
-
-searchInputEl.addEventListener('input', function() {
-    clearTimeout(searchTimeout);
-    clearTimeout(acTimeout);
-    var val = this.value.trim();
-    if (val.length < 1) { document.getElementById('searchResult').style.display = 'none'; return; }
-    // Show autocomplete suggestions first (instant, from our database)
-    acTimeout = setTimeout(function() { fetchAutocomplete(val); }, 150);
-    // Also queue the full Yahoo search after a longer delay
-    searchTimeout = setTimeout(function() { searchTicker(val.toUpperCase()); }, 800);
-});
-
-async function fetchAutocomplete(query) {
-    try {
-        var r = await fetch('/api/autocomplete?q=' + encodeURIComponent(query));
-        var j = await r.json();
-        if (j.status !== 'ok' || !j.results || j.results.length === 0) return;
-        var el = document.getElementById('searchResult');
-        el.style.display = 'block';
-        var h = '<div style="font-size:0.65rem;color:var(--text-tertiary);margin-bottom:6px;padding:0 4px">Suggestions (tap to search):</div>';
-        j.results.forEach(function(item) {
-            h += '<div class="ac-item" onclick="selectAutocomplete(\'' + item.ticker + '\')" style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border-radius:6px;cursor:pointer;transition:all 0.15s">';
-            h += '<div><strong style="color:var(--accent);font-size:0.85rem">' + item.ticker + '</strong>';
-            h += ' <span style="color:var(--text-secondary);font-size:0.75rem">' + item.name + '</span></div>';
-            h += '<span style="font-size:0.65rem;color:var(--text-tertiary)">Search</span>';
-            h += '</div>';
-        });
-        el.innerHTML = h;
-    } catch(e) {}
-}
-
-function selectAutocomplete(ticker) {
-    clearTimeout(searchTimeout);
-    clearTimeout(acTimeout);
-    document.getElementById('searchInput').value = ticker;
-    searchTicker(ticker);
-}
 
 
 
@@ -2191,36 +2189,3 @@ function renderPortfolioChart(simulation) {
 }
 
 
-// ============================================================
-// FIX: Override search input to only show autocomplete while typing
-// Yahoo search only fires on Enter or when tapping a suggestion
-// ============================================================
-(function() {
-    var si = document.getElementById('searchInput');
-    // Remove all existing input listeners by cloning
-    var newSi = si.cloneNode(true);
-    si.parentNode.replaceChild(newSi, si);
-
-    var acTimer = null;
-
-    newSi.addEventListener('input', function() {
-        clearTimeout(searchTimeout);
-        clearTimeout(acTimer);
-        var val = this.value.trim();
-        if (val.length < 1) { document.getElementById('searchResult').style.display = 'none'; return; }
-        // Only show autocomplete suggestions while typing (no Yahoo search)
-        acTimer = setTimeout(function() { fetchAutocomplete(val); }, 150);
-    });
-
-    newSi.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') {
-            clearTimeout(acTimer);
-            var val = this.value.trim().toUpperCase();
-            if (val) searchTicker(val);
-        }
-        if (e.key === 'Escape') {
-            document.getElementById('searchResult').style.display = 'none';
-            this.blur();
-        }
-    });
-})();

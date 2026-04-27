@@ -591,17 +591,53 @@ def api_market_regime():
 
 @app.route("/api/autocomplete")
 def api_autocomplete():
-    """Search stock names and tickers for autocomplete suggestions."""
+    """Search stock names and tickers for autocomplete suggestions.
+    First searches local STOCK_NAMES, then falls back to Yahoo Finance
+    search for tickers not in our universe."""
     from analysis import STOCK_NAMES
-    q = request.args.get("q", "").strip().upper()
+    q = request.args.get("q", "").strip()
+    q_upper = q.upper()
     if len(q) < 1:
         return safe_jsonify({"status": "ok", "results": []})
-    results = []
+
+    # 1. Local search — our curated stock universe
+    local_results = []
     for ticker, name in STOCK_NAMES.items():
-        if q in ticker.upper() or q in name.upper():
-            results.append({"ticker": ticker, "name": name})
-            if len(results) >= 10:
+        if q_upper in ticker.upper() or q_upper in name.upper():
+            local_results.append({"ticker": ticker, "name": name, "source": "local"})
+            if len(local_results) >= 8:
                 break
+
+    # 2. Yahoo Finance search — for stocks NOT in our universe
+    yahoo_results = []
+    if len(local_results) < 5 and len(q) >= 2:
+        try:
+            import requests as http_req
+            # Yahoo Finance autosuggest API (public, no auth needed)
+            url = f"https://query2.finance.yahoo.com/v1/finance/search?q={q}&quotesCount=6&newsCount=0&listsCount=0&enableFuzzyQuery=false&quotesQueryId=tss_match_phrase_query"
+            headers = {"User-Agent": "Mozilla/5.0"}
+            r = http_req.get(url, headers=headers, timeout=3)
+            if r.status_code == 200:
+                data = r.json()
+                seen_tickers = {lr["ticker"] for lr in local_results}
+                for quote in data.get("quotes", []):
+                    symbol = quote.get("symbol", "")
+                    name = quote.get("shortname") or quote.get("longname") or symbol
+                    qtype = quote.get("quoteType", "")
+                    # Only include equities, ETFs, and crypto
+                    if qtype in ("EQUITY", "ETF", "CRYPTOCURRENCY", "MUTUALFUND") and symbol not in seen_tickers:
+                        yahoo_results.append({
+                            "ticker": symbol,
+                            "name": name,
+                            "source": "yahoo",
+                            "type": qtype.lower(),
+                        })
+                        if len(yahoo_results) >= 5:
+                            break
+        except Exception:
+            pass  # Yahoo search is best-effort
+
+    results = local_results + yahoo_results
     return safe_jsonify({"status": "ok", "results": results})
 
 
