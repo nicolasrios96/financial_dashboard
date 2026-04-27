@@ -724,6 +724,25 @@ def api_chat():
         for t in dollar_tickers:
             mentioned_tickers.add(t)
 
+        # 2b. Detect ANY uppercase word that looks like a ticker (3-6 chars, all caps)
+        # This catches tickers NOT in our universe (e.g., ENTG, PLBY, etc.)
+        potential_tickers = re.findall(r'\b([A-Z]{2,6}(?:\.[A-Z]{1,2})?(?:-[A-Z]{1,4})?)\b', msg_upper)
+        # Filter out common English words that look like tickers
+        COMMON_WORDS = {'THE', 'AND', 'FOR', 'ARE', 'BUT', 'NOT', 'YOU', 'ALL', 'CAN', 'HER',
+                        'WAS', 'ONE', 'OUR', 'OUT', 'HAS', 'HIS', 'HOW', 'ITS', 'MAY', 'NEW',
+                        'NOW', 'OLD', 'SEE', 'WAY', 'WHO', 'BOY', 'DID', 'GET', 'HIM', 'LET',
+                        'SAY', 'SHE', 'TOO', 'USE', 'BUY', 'SELL', 'HOLD', 'WHAT', 'WHEN',
+                        'THIS', 'THAT', 'WITH', 'HAVE', 'FROM', 'THEY', 'BEEN', 'SOME', 'THAN',
+                        'JUST', 'LIKE', 'LONG', 'MAKE', 'MANY', 'MUCH', 'OVER', 'SUCH', 'TAKE',
+                        'TELL', 'THAN', 'THEM', 'THEN', 'VERY', 'WANT', 'WILL', 'ALSO', 'BACK',
+                        'GOOD', 'GIVE', 'MOST', 'ONLY', 'PICK', 'STOP', 'LOSS', 'BEST', 'TOP',
+                        'ABOUT', 'SHOULD', 'WHICH', 'THEIR', 'WOULD', 'THERE', 'THINK', 'WHERE',
+                        'RIGHT', 'STOCK', 'PRICE', 'TODAY', 'ENTRY', 'QUICK', 'SCORE', 'TREND',
+                        'REVIEW', 'MARKET', 'INVEST', 'COMPARE', 'ANALYZE', 'PORTFOLIO'}
+        for t in potential_tickers:
+            if t not in COMMON_WORDS and t not in STOCK_NAMES and len(t) >= 3:
+                mentioned_tickers.add(t)
+
         # 3. Match company names → resolve to ticker
         # e.g., "Micron Technology" → MU, "Tesla" → TSLA, "Apple" → AAPL
         for ticker, name in STOCK_NAMES.items():
