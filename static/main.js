@@ -2019,23 +2019,30 @@ renderActions = function(d) {
     _actionsDataForMobile = d.actions;
     // Add compact rows after the action cards
     const el = document.getElementById('actionsContent');
-    if (!d.actions || d.actions.length === 0) return;
     let mobileHtml = '';
-    d.actions.forEach(function(a, i) {
-        var changeCls = (a.pct_1w||0) >= 0 ? 'positive' : 'negative';
-        var changeSign = (a.pct_1w||0) >= 0 ? '+' : '';
-        mobileHtml += '<div class="mobile-ticker-row" onclick="openStockDetail(' + i + ')">' +
-            '<div class="ticker-left">' +
-            '<span class="ticker-symbol">' + a.ticker + '</span>' +
-            '<span class="ticker-name">' + a.name + '</span>' +
-            '</div>' +
-            '<div class="ticker-right">' +
-            '<div class="ticker-price">' + fmtMoney(a.price) + '</div>' +
-            '<div class="ticker-change ' + changeCls + '">' + changeSign + (a.pct_1w||0).toFixed(1) + '%</div>' +
-            '</div></div>';
-    });
-    // Also add sell alerts as compact rows
+
+    // BUY section with header
+    if (d.actions && d.actions.length > 0) {
+        mobileHtml += '<div class="mobile-section-header buy-header">📈 <strong>BUY</strong> — ' + d.actions.length + ' picks</div>';
+        d.actions.forEach(function(a, i) {
+            var changeCls = (a.pct_1w||0) >= 0 ? 'positive' : 'negative';
+            var changeSign = (a.pct_1w||0) >= 0 ? '+' : '';
+            mobileHtml += '<div class="mobile-ticker-row buy-row" onclick="openStockDetail(' + i + ')">' +
+                '<div class="ticker-left">' +
+                '<span class="ticker-symbol">' + a.ticker + '</span>' +
+                '<span class="ticker-name">' + a.name + '</span>' +
+                '<span class="ticker-badge" style="background:var(--green-bg);color:var(--green)">BUY</span>' +
+                '</div>' +
+                '<div class="ticker-right">' +
+                '<div class="ticker-price">' + fmtMoney(a.price) + '</div>' +
+                '<div class="ticker-change ' + changeCls + '">' + changeSign + (a.pct_1w||0).toFixed(1) + '%</div>' +
+                '</div></div>';
+        });
+    }
+
+    // SELL/AVOID section with header
     if (d.sell_alerts && d.sell_alerts.length > 0) {
+        mobileHtml += '<div class="mobile-section-header sell-header">📉 <strong>SELL / AVOID</strong> — ' + d.sell_alerts.length + ' warnings</div>';
         d.sell_alerts.forEach(function(s) {
             var changeCls = (s.pct_1w||0) >= 0 ? 'positive' : 'negative';
             var changeSign = (s.pct_1w||0) >= 0 ? '+' : '';
@@ -2051,7 +2058,7 @@ renderActions = function(d) {
                 '</div></div>';
         });
     }
-    el.innerHTML += mobileHtml;
+    if (mobileHtml) el.innerHTML += mobileHtml;
 };
 
 

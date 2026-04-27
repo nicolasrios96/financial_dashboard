@@ -721,6 +721,45 @@ body:not(.advanced-mode) .tech-detail { display: none !important; }
     /* Hide full action cards on mobile, show compact rows */
     .action-card { display: none !important; }
     .mobile-ticker-row { display: flex !important; }
+
+    /* Mobile section headers for BUY / SELL separation */
+    .mobile-section-header {
+        padding: 10px 12px; margin: 12px 0 6px; border-radius: 8px;
+        font-size: 0.8rem; font-weight: 600;
+    }
+    .mobile-section-header.buy-header {
+        background: var(--green-bg); color: var(--green);
+        border: 1px solid rgba(52,199,89,0.2);
+    }
+    .mobile-section-header.sell-header {
+        background: var(--red-bg); color: var(--red);
+        border: 1px solid rgba(255,59,48,0.2);
+    }
+    .mobile-section-header:first-of-type { margin-top: 4px; }
+
+    /* BUY rows get green left border */
+    .mobile-ticker-row.buy-row { border-left: 3px solid var(--green); }
+
+    /* Chat panel — mobile improvements */
+    .chat-panel {
+        height: 75vh !important; top: auto !important; bottom: 0 !important;
+        border-radius: 16px 16px 0 0; border-top: 1px solid var(--border);
+    }
+    .chat-header {
+        padding: 12px 14px !important;
+    }
+    .chat-header button {
+        min-width: 36px !important; min-height: 36px !important;
+        font-size: 1.1rem !important; padding: 6px 10px !important;
+        border-radius: 50% !important;
+    }
+    .chat-input-area {
+        padding: 8px 10px 16px !important; /* extra bottom padding for iOS safe area */
+        padding-bottom: max(16px, env(safe-area-inset-bottom)) !important;
+    }
+    .chat-input-area input { font-size: 16px !important; } /* Prevent iOS zoom on focus */
+    .chat-quick-prompts { padding: 6px 10px !important; }
+    .chat-quick-prompts button { font-size: 0.6rem !important; padding: 3px 8px !important; }
 }
 
 /* Stock detail bottom sheet */
