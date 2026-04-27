@@ -91,7 +91,7 @@ STOCK_NAMES = {
     "IOT": "Samsara Inc.", "BILL": "BILL Holdings",
     # Aerospace / Space
     "AXON": "Axon Enterprise", "HWM": "Howmet Aerospace", "TDG": "TransDigm Group",
-    "HEI": "HEICO Corp.",
+    "HEI": "HEICO Corp.", "ENTG": "Entegris Inc.",
 
     # ===== EU Stocks (80+) =====
     "ASML.AS": "ASML Holding", "INGA.AS": "ING Group", "PHIA.AS": "Philips NV",
